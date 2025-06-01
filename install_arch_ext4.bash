@@ -693,8 +693,8 @@ info_print "building efistub"
 efi_dev=$(lsblk --noheadings --output PKNAME $ESP)
 efi_part_num=$(echo $ESP | grep -Eo '[0-9]+$')
 
-arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part ${efi_part_num} --label "arch-linux" --loader "EFI\Linux\arch-linux.efi" --unicode
 arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part ${efi_part_num} --label "arch-linux-lts" --loader "EFI\Linux\arch-linux-lts.efi" --unicode
+arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part ${efi_part_num} --label "arch-linux" --loader "EFI\Linux\arch-linux.efi" --unicode
 
 ####################################################################################################
 # final configurations
@@ -817,7 +817,9 @@ arch-chroot /mnt passwd -l root &>/dev/null
 
 if [ "$encrypt_key" = "yes" ]; then
     info_print "Enrolling fido2 luks key: please follow instructions"
-    systemd-cryptenroll "$ROOT" --wipe-slot=all --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa 
+    echo "$userpass" > /root/keyfile
+    systemd-cryptenroll "$ROOT" --wipe-slot=all --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa --unlock-key-file=/root/keyfile
+    rm /root/keyfile
 fi
 
 ####################################################################################################
@@ -859,7 +861,7 @@ if [ "$encrypt_root" = "yes" ]; then
   fi
 fi
 
-info_print "Success, reboot into firmware and enable secure boot"
+info_print "Success, reboot into firmware and enable secure boot: systemctl reboot --firmware-setup"
 exit
 
 ####################################################################################################
