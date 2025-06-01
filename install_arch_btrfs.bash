@@ -129,26 +129,22 @@ ask_encrypt_key () {
     esac
 }
 
-# Selecting a kernel to install (function).
-kernel_selector () {
-    info_print "List of kernels:"
-    info_print "1) Stable: Vanilla Linux kernel with a few specific Arch Linux patches applied"
-    info_print "2) Hardened: A security-focused Linux kernel"
-    info_print "3) Longterm: Long-term support (LTS) Linux kernel"
-    info_print "4) Zen Kernel: A Linux kernel optimized for desktop usage"
-    input_print "Please select the number of the corresponding kernel (e.g. 1): " 
-    read -r kernel_choice
-    case $kernel_choice in
-        1 ) KERNEL="linux"
-            return 0;;
-        2 ) KERNEL="linux-hardened"
-            return 0;;
-        3 ) KERNEL="linux-lts"
-            return 0;;
-        4 ) KERNEL="linux-zen"
-            return 0;;
-        * ) error_print "You did not enter a valid selection, please try again."
+# sbctl
+ask_secure_boot () {
+
+    info_print "secure boot"
+    read -r -p "Do you want to enable secure boot? (yes/no): " secure_boot
+    
+    secure_boot=$(echo "$encrypt_root" | tr '[:upper:]' '[:lower:]')
+    
+    case "$secure_boot" in
+        yes|no)
+            return 0
+            ;;
+        *)
+            echo "Invalid response. Please answer 'yes' or 'no'." >&2
             return 1
+            ;;
     esac
 }
 
@@ -344,9 +340,9 @@ else
 fi
 
 ####################################################################################################
-# Setting up the kernel.
+# Secure Boot
 ####################################################################################################
-until kernel_selector; do : ; done
+until ask_secure_boot; do : ; done
 
 ####################################################################################################
 # Setting up the kernel.
@@ -520,7 +516,7 @@ mount -o fmask=0137,dmask=0027 "$ESP" /mnt/efi
 microcode_detector
 
 info_print "Installing the base system (pacstrap)"
-pacstrap -K /mnt base base-devel "$KERNEL" "$KERNEL"-headers "$microcode" linux-firmware apparmor openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools sbctl efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim btrfs-progs snapper snap-pac &>/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim btrfs-progs snapper snap-pac &>/dev/null
 
 ####################################################################################################
 # Setting up the hostname.
@@ -615,21 +611,29 @@ else
 EOF
 fi
 
-cat > /mnt/etc/mkinitcpio.d/"$KERNEL".preset <<EOF
+cat > /mnt/etc/mkinitcpio.d/linux.preset <<EOF
 # mkinitcpio preset file to generate UKIs
 
 #ALL_config="/etc/mkinitcpio.conf"
-ALL_kver="/boot/vmlinuz-$KERNEL"
+ALL_kver="/boot/vmlinuz-linux"
 
-PRESETS=('default' 'fallback')
+PRESETS=('default')
 
-default_uki="/efi/EFI/Linux/arch-$KERNEL.efi"
+default_uki="/efi/EFI/Linux/arch-linux.efi"
 default_options="--splash=/usr/share/systemd/bootctl/splash-arch.bmp"
-
-fallback_uki="/efi/EFI/Linux/arch-$KERNEL-fallback.efi"
-fallback_options="-S autodetect"
 EOF
 
+cat > /mnt/etc/mkinitcpio.d/linux-lts.preset <<EOF
+# mkinitcpio preset file to generate UKIs
+
+#ALL_config="/etc/mkinitcpio.conf"
+ALL_kver="/boot/vmlinuz-linux-lts"
+
+PRESETS=('default')
+
+default_uki="/efi/EFI/Linux/arch-linux-lts.efi"
+default_options="--splash=/usr/share/systemd/bootctl/splash-arch.bmp"
+EOF
 ####################################################################################################
 # arch-chroot - timezone,clock,locale,mkinitcpio, and snapper setup
 ####################################################################################################
@@ -686,8 +690,8 @@ info_print "building efistub"
 efi_dev=$(lsblk --noheadings --output PKNAME $ESP)
 efi_part_num=$(echo $ESP | grep -Eo '[0-9]+$')
 
-arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part ${efi_part_num} --label "arch-$KERNEL-fallback" --loader "EFI\Linux\arch-$KERNEL-fallback.efi" --unicode
-arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part ${efi_part_num} --label "arch-$KERNEL" --loader "EFI\Linux\arch-$KERNEL.efi" --unicode
+arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part ${efi_part_num} --label "arch-linux-lts" --loader "EFI\Linux\arch-linux-lts.efi" --unicode
+arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part ${efi_part_num} --label "arch-linux" --loader "EFI\Linux\arch-linux.efi" --unicode
 
 ####################################################################################################
 # final configurations
@@ -815,6 +819,9 @@ fi
 # secure boot
 ####################################################################################################
 
+if [ "$secure_boot" = "yes" ]; then
+pacstrap /mnt sbctl &>/dev/null
+
 arch-chroot /mnt /bin/bash -e <<EOF
 if sbctl status | grep -q 'Setup Mode:.*Enabled'; then
   echo "Secure Boot is in setup mode, proceeding with secure boot configuration"
@@ -830,6 +837,7 @@ else
 fi
 exit
 EOF
+fi
 
 ####################################################################################################
 # final message

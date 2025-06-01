@@ -154,6 +154,27 @@ ask_encrypt_key () {
 }
 
 ######################################################
+# sbctl
+######################################################
+ask_secure_boot () {
+
+    info_print "secure boot"
+    read -r -p "Do you want to enable secure boot? (yes/no): " secure_boot
+    
+    secure_boot=$(echo "$encrypt_root" | tr '[:upper:]' '[:lower:]')
+    
+    case "$secure_boot" in
+        yes|no)
+            return 0
+            ;;
+        *)
+            echo "Invalid response. Please answer 'yes' or 'no'." >&2
+            return 1
+            ;;
+    esac
+}
+
+######################################################
 # user password
 ######################################################
 userpass_selector () {
@@ -343,6 +364,11 @@ else
 fi
 
 ####################################################################################################
+# Secure Boot
+####################################################################################################
+until ask_secure_boot; do : ; done
+
+####################################################################################################
 # Setting up the kernel.
 ####################################################################################################
 until ask_apparmor; do : ; done
@@ -495,7 +521,7 @@ fi
 microcode_detector
 
 info_print "Installing the base system (pacstrap)"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools sbctl efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim tldr jq restic &>/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim tldr jq restic &>/dev/null
 
 ####################################################################################################
 # Generating /etc/fstab.
@@ -583,25 +609,25 @@ if [ "$encrypt_root" = "yes" ]; then
 
     echo "root=/dev/mapper/cryptroot rw quiet nowatchdog bgrt_disable zswap.enabled=0" >> /mnt/etc/cmdline.d/root.conf
 
-    cat > /mnt/etc/mkinitcpio.conf <<EOF
-    MODULES=(usbhid xhci_hcd hid-generic)
-    FILES=()
-    HOOKS=(base systemd keyboard autodetect microcode modconf kms sd-vconsole block sd-encrypt filesystems fsck)
+cat > /mnt/etc/mkinitcpio.conf <<EOF
+MODULES=(usbhid xhci_hcd hid-generic)
+FILES=()
+HOOKS=(base systemd keyboard autodetect microcode modconf kms sd-vconsole block sd-encrypt filesystems fsck)
 EOF
 else
     echo "root=UUID=$ROOT_UUID rw quiet nowatchdog bgrt_disable zswap.enabled=0" >> /mnt/etc/cmdline.d/root.conf
 
-    cat > /mnt/etc/mkinitcpio.conf <<EOF
-    MODULES=(usbhid xhci_hcd hid-generic)
-    FILES=()
-    HOOKS=(base systemd keyboard autodetect microcode modconf kms sd-vconsole block filesystems fsck)
+cat > /mnt/etc/mkinitcpio.conf <<EOF
+MODULES=(usbhid xhci_hcd hid-generic)
+FILES=()
+HOOKS=(base systemd keyboard autodetect microcode modconf kms sd-vconsole block filesystems fsck)
 EOF
 fi
 
 cat > /mnt/etc/mkinitcpio.d/linux.preset <<EOF
 # mkinitcpio preset file to generate UKIs
 
-ALL_kver="/boot/vmlinuz-linux
+ALL_kver="/boot/vmlinuz-linux"
 
 PRESETS=('default')
 
@@ -798,6 +824,9 @@ fi
 # secure boot
 ####################################################################################################
 
+if [ "$secure_boot" = "yes" ]; then
+pacstrap /mnt sbctl &>/dev/null
+
 arch-chroot /mnt /bin/bash -e <<EOF
 if sbctl status | grep -q 'Setup Mode:.*Enabled'; then
   echo "Secure Boot is in setup mode, proceeding with secure boot configuration"
@@ -813,6 +842,10 @@ else
 fi
 exit
 EOF
+
+# re-install kernel to make sure secureboot signs kernel
+pacstrap /mnt linux linux-lts
+fi
 
 ####################################################################################################
 # final message
