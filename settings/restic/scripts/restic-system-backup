@@ -1,0 +1,62 @@
+#!/bin/env bash
+
+set -e
+
+# make sure script is run as root
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+if [ $# -ne 1 ]; then
+   echo "Usage: $0 <comment>"
+   exit 1
+fi
+
+comment="$1"
+
+CONFIG_DIR="/etc/restic"
+
+source "$CONFIG_DIR"/env_file
+
+exclude_file="$CONFIG_DIR"/exclude_file 
+
+snapshot_type="manual"
+
+#####################################
+# log directory
+#####################################
+
+log_dir="/var/log/restic_snap"
+
+if [ ! -d "$log_dir" ]; then
+  mkdir -p "$log_dir"
+fi
+
+#####################################
+# run snapshot
+#####################################
+
+restic_output=$(restic backup / --exclude-caches --exclude-file "$exclude_file" --tag "$snapshot_type" --tag "$comment" --json)
+
+full_snapshot_id=$(echo "$restic_output" | jq -r 'select(.message_type == "summary").snapshot_id')
+snapshot_id=${full_snapshot_id:0:8}
+
+#####################################
+# log file
+#####################################
+
+date_time_format="+%Y%m%d-%H%M"
+log_file="$log_dir/restic_log_$(date "$date_time_format")_${snapshot_type}_${snapshot_id}.log"
+
+{
+  echo "type: $snapshot_type"
+  echo "snapshot_id: $snapshot_id"
+  echo ""
+} >> "$log_file"
+
+exit 0
+
+#####################################
+# end
+#####################################

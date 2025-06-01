@@ -1,0 +1,31 @@
+#!/bin/env bash
+
+CONFIG_DIR="/etc/restic"
+
+if [ "$1" == "--help" ]; then
+  # Print usage examples
+  echo "# usage:"
+  echo "# restic-system snapshots (list snapshots)"
+  echo "# restic-system check (check repository structure)"
+  echo "# restic-system check --read-data (check repository integrity fully)"
+  echo "# restic-system check --read-data --read-data-subset=10% (check repository integrity partially)"
+  echo "# restic-system forget <snapshot_id> --prune (delete a snapshot)"
+  echo "# restic-system forget --keep-last 1 --prune (delete all snapshots except most recent)"
+  echo "# restic-system forget --keep-last 4 --prune (delete all snapshots except most recent 4)"
+  echo "# restic-system mount /mnt/restic (mount repository)"
+  echo "# restic-system diff <snapshot_id_1> <snapshot_id_2> (diff 2 snapshots)"
+  echo "# restic-system key list (list all encryption keys)"
+  echo "# restic-system key add (add new encryption key to repository)"
+  echo "# restic-system key remove (remove an encryption key from the repository)"
+  exit 0
+fi
+
+if [ -f "$CONFIG_DIR/env_file" ]; then
+  source "$CONFIG_DIR/env_file"
+else
+  echo "configuration file not found"
+  exit 1
+fi
+
+restic "$@"
+

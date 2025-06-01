@@ -1,0 +1,89 @@
+#!/bin/env bash
+
+set -e
+
+CONFIG_DIR="/etc/restic"
+
+source "$CONFIG_DIR"/env_file
+
+exclude_file="$CONFIG_DIR"/exclude_file 
+
+parent_cmd="$(ps -o args= -p "$PPID")"
+snapshot_type="$1"
+
+
+#####################################
+# comment
+#####################################
+
+packages=()
+
+while IFS= read -r line; do
+  packages+=("$line")
+done
+
+important="no"
+
+for pkg in "${packages[@]}"; do
+  if [[ "$pkg" == "linux" || "$pkg" == "linux-lts" || "$pkg" == "linux-firmware" ]]; then
+    important="yes"
+    break
+  fi
+done
+
+comment="${packages[*]}"
+
+#####################################
+# comment short
+#####################################
+
+comment_short=""
+
+num_packages=${#packages[@]}
+
+if [[ "$num_packages" -le 3 ]]; then
+  comment_short="${packages[*]}"
+else
+  comment_short="${packages[0]}, ${packages[1]}, ${packages[2]}..."
+fi
+
+#####################################
+# log directory
+#####################################
+
+log_dir="/var/log/restic_snap"
+
+if [ ! -d "$log_dir" ]; then
+  mkdir -p "$log_dir"
+fi
+
+#####################################
+# run snapshot
+#####################################
+
+restic_output=$(restic backup / --exclude-caches --exclude-file "$exclude_file" --tag "$snapshot_type" --tag "is_important: $important" --tag "pkgs: $comment_short" --json)
+
+full_snapshot_id=$(echo "$restic_output" | jq -r 'select(.message_type == "summary").snapshot_id')
+snapshot_id=${full_snapshot_id:0:8}
+
+#####################################
+# log file
+#####################################
+
+date_time_format="+%Y%m%d-%H%M"
+log_file="$log_dir/restic_log_$(date "$date_time_format")_${snapshot_type}_${snapshot_id}.log"
+
+{
+  echo "type: $snapshot_type"
+  echo "pacman_cmnd: $parent_cmd"
+  echo "critical: $important"
+  echo "comment: $comment"
+  echo "snapshot_id: $snapshot_id"
+  echo ""
+} >> "$log_file"
+
+exit 0
+
+#####################################
+# end
+#####################################

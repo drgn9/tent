@@ -1,0 +1,52 @@
+#!/bin/env bash
+
+set -e
+
+# make sure script is run as root
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+CONFIG_DIR="/etc/restic"
+
+source "$CONFIG_DIR"/env_file
+
+# Function to check if the Restic repository exists.
+check_repo_exists() {
+    restic cat config &>/dev/null
+    return $?
+}
+
+# Function to generate a random alphanumeric key of the specified length.
+generate_random_key() {
+    local len=$1
+    tr -dc 'A-Za-z0-9' </dev/urandom | fold -w "${len}" | head -n 1
+}
+
+# Function to create a new Restic repository.
+initialize_repo() {
+    restic init
+    return $?
+}
+
+# Main execution
+# check if repo exists; if not create random keyfile of length 24 alphanumeric and then initiate the repository, otherwise do nothing
+if ! check_repo_exists; then
+    echo "Repository does not exist. Creating a new Restic repository."
+    # Create random keyfile of length 24 alphanumeric characters.
+    generate_random_key 24 > "$RESTIC_PASSWORD_FILE"
+    
+    # Ensure the keyfile has proper permissions.
+    chmod 600 "$RESTIC_PASSWORD_FILE"
+    
+    # Initialize the repository with the created keyfile.
+    if initialize_repo; then
+        echo "Repository initialized successfully."
+    else
+        echo "Failed to initialize the repository." >&2
+        exit 1
+    fi
+else
+    echo "Repository already exists. No changes made."
+fi

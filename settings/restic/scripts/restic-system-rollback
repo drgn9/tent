@@ -1,0 +1,36 @@
+#!/bin/env bash
+
+set -e
+
+# make sure script is run as root
+if [[ $EUID -ne 0 ]]; then
+   echo "This script must be run as root" 1>&2
+   exit 1
+fi
+
+CONFIG_DIR="/etc/restic"
+
+source "$CONFIG_DIR"/env_file
+
+exclude_file="$CONFIG_DIR"/exclude_file 
+
+if [ -z "$1" ]; then
+  echo "Usage: $0 <snapshot_id>"
+  echo "You must provide the snapshot_id as an argument."
+  exit 1
+fi
+snapshot_id="$1"
+
+read -p "Do you want to perform a dry run? (y/N) " -n 1 -r
+echo
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+  echo "Performing a dry run..."
+  restic restore "$snapshot_id" --exclude-file "$exclude_file" --delete -vv --dry-run --target /
+else
+  echo "Restoring snapshot..."
+  restic restore "$snapshot_id" --exclude-file "$exclude_file" --delete --target /
+
+  if [ -f /var/lib/pacman/db.lck ]; then
+    sudo rm /var/lib/pacman/db.lck
+  fi
+fi

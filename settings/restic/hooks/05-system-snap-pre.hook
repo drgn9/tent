@@ -1,0 +1,14 @@
+[Trigger]
+Operation = Upgrade
+Operation = Install
+Operation = Remove
+Type = Package
+Target = *
+
+[Action]
+Description = Performing restic pre-snap
+Depends = rsync
+When = PreTransaction
+Exec = /etc/pacman.d/scripts/restic-system-backup-auto pre
+NeedsTargets
+AbortOnFail

@@ -1,0 +1,3 @@
+export RESTIC_REPOSITORY="/.snapshots/backups/system"
+export RESTIC_PASSWORD_FILE=/etc/restic/key_file
+export RESTIC_CACHE_DIR="/var/cache/restic"
