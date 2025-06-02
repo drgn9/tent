@@ -818,7 +818,6 @@ arch-chroot /mnt passwd -l root &>/dev/null
 if [ "$encrypt_key" = "yes" ]; then
     info_print "Enrolling fido2 luks key: the password to unlock the root volume is your user password"
     systemd-cryptenroll "$ROOT" --wipe-slot=all --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa
-    rm /root/keyfile
 fi
 
 ####################################################################################################
