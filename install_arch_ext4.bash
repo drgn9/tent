@@ -818,6 +818,7 @@ arch-chroot /mnt passwd -l root &>/dev/null
 if [ "$encrypt_key" = "yes" ]; then
     info_print "Enrolling fido2 luks key: please follow instructions"
     echo "$userpass" > /root/keyfile
+    chmod 600 /root/keyfile
     systemd-cryptenroll "$ROOT" --wipe-slot=all --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa --unlock-key-file=/root/keyfile
     rm /root/keyfile
 fi
