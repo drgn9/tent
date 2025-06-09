@@ -789,19 +789,19 @@ cp /root/install-arch/settings/restic/hooks/zzz-system-snap-post.hook /mnt/etc/p
 cp /root/install-arch/settings/restic/scripts/restic-system-backup-auto /mnt/etc/pacman.d/scripts/restic-system-backup-auto
 arch-chroot /mnt chmod +x /etc/pacman.d/scripts/restic-system-backup-auto
 
-cp /root/install-arch/settings/restic/scripts/restic-init /mnt/usr/local/sbin/restic-init
+cp /root/install-arch/settings/restic/scripts/restic-system-init /mnt/usr/local/sbin/restic-system-init
 cp /root/install-arch/settings/restic/scripts/restic-system /mnt/usr/local/sbin/restic-system
 cp /root/install-arch/settings/restic/scripts/restic-system-backup /mnt/usr/local/sbin/restic-system-backup
 cp /root/install-arch/settings/restic/scripts/restic-system-rollback /mnt/usr/local/sbin/restic-system-rollback
 
-arch-chroot /mnt chmod +x /usr/local/sbin/restic-init
+arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-init
 arch-chroot /mnt chmod +x /usr/local/sbin/restic-system
 arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-backup
 arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-rollback
 arch-chroot /mnt chmod +x /etc/pacman.d/scripts/restic-system-backup-auto
 
 info_print "initialize restic system repo"
-arch-chroot /mnt /usr/local/sbin/restic-init
+arch-chroot /mnt /usr/local/sbin/restic-system-init
 
 ####################################################################################################
 # lock root account
