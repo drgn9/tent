@@ -65,32 +65,6 @@ echo "write-cache" >> /mnt/etc/apparmor/parser.conf
 echo "Optimize=compress-fast" >> /mnt/etc/apparmor/parser.conf
 }
 
-# firewalld
-ask_firewalld () {
-
-    read -r -p "Do you want to install and enable firewalld? (yes/no): " use_firewalld
-    
-    use_firewalld=$(echo "$use_firewalld" | tr '[:upper:]' '[:lower:]')
-    
-    case "$use_firewalld" in
-        yes|no)
-            return 0
-            ;;
-        *)
-            echo "Invalid response. Please answer 'yes' or 'no'." >&2
-            return 1
-            ;;
-    esac
-}
-
-firewalld_installer () {
-
-    if [ "$use_firewalld" = "yes" ]; then
-        pacstrap /mnt firewalld &>/dev/null
-        systemctl enable firewalld.service --root=/mnt &>/dev/null
-        arch-chroot /mnt firewall-offline-cmd --set-default-zone=drop
-    fi
-}
 
 # luks encryption choice
 ask_encrypt_root () {
@@ -355,11 +329,6 @@ until ask_apparmor; do : ; done
 until network_selector; do : ; done
 
 ####################################################################################################
-# firewalld
-####################################################################################################
-until ask_firewalld; do : ; done
-
-####################################################################################################
 # User choses the locale.
 ####################################################################################################
 until locale_selector; do : ; done
@@ -516,7 +485,7 @@ mount -o fmask=0137,dmask=0027 "$ESP" /mnt/efi
 microcode_detector
 
 info_print "Installing the base system (pacstrap)"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim btrfs-progs snapper snap-pac &>/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim btrfs-progs snapper snap-pac &>/dev/null
 
 ####################################################################################################
 # Setting up the hostname.
@@ -714,9 +683,8 @@ zram-size = min(ram / 2, 4 * 1024)
 compression-algorithm = zstd
 EOF
 
-# firewalld
-info_print "firewalld"
-firewalld_installer
+info_print 'starting nftables firewall'
+systemctl enable nftables.service --root=/mnt &>/dev/null
 
 # Pacman eye-candy features.
 info_print "Enabling colours, animations, and parallel downloads for pacman."
