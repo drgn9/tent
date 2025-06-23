@@ -483,7 +483,7 @@ fi
 microcode_detector
 
 info_print "Installing the base system (pacstrap)"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim tldr jq restic &>/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim tldr jq restic fuse3 &>/dev/null
 
 ####################################################################################################
 # Generating /etc/fstab.
@@ -761,6 +761,8 @@ arch-chroot /mnt chmod +x /usr/local/sbin/restic-system
 arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-backup
 arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-rollback
 arch-chroot /mnt chmod +x /etc/pacman.d/scripts/restic-system-backup-auto
+
+arch-chroot /mnt ln -s /usr/bin/fusermount3 /usr/local/bin/fusermount
 
 info_print "initialize restic system repo"
 arch-chroot /mnt /usr/local/sbin/restic-system-init
