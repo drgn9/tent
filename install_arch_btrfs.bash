@@ -485,7 +485,7 @@ mount -o fmask=0137,dmask=0027 "$ESP" /mnt/efi
 microcode_detector
 
 info_print "Installing the base system (pacstrap)"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim btrfs-progs snapper snap-pac &>/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim nnn btrfs-progs snapper snap-pac &>/dev/null
 
 ####################################################################################################
 # Setting up the hostname.

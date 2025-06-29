@@ -483,7 +483,7 @@ fi
 microcode_detector
 
 info_print "Installing the base system (pacstrap)"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim tldr jq restic fuse2 fuse3 &>/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim nnn tldr jq restic fuse2 fuse3 &>/dev/null
 
 ####################################################################################################
 # Generating /etc/fstab.
