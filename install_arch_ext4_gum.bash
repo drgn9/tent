@@ -1,4 +1,4 @@
-#!/usr/bin/env -S bash -e
+#!/usr/bin/env bash
 
 clear
 
@@ -106,9 +106,9 @@ fi
 
 cleanup() {
     show_error "Installation failed at line $1"
+    rm -f /mnt/etc/sudoers.d/wheel 2>/dev/null || true
     umount -R /mnt 2>/dev/null || true
     cryptsetup close cryptroot 2>/dev/null || true
-    rm -f /mnt/etc/sudoers.d/wheel 2>/dev/null || true
 }
 trap 'cleanup $LINENO' ERR
 
@@ -118,21 +118,21 @@ trap 'cleanup $LINENO' ERR
 
 apparmor_installer() {
     if [ "$use_apparmor" = "yes" ]; then
+        pacstrap /mnt apparmor >/dev/null
         cat > /mnt/etc/cmdline.d/security.conf <<EOF
 # enable apparmor
 lsm=landlock,lockdown,yama,integrity,apparmor,bpf audit=1 audit_backlog_limit=256
 EOF
         systemctl enable apparmor.service --root=/mnt &>/dev/null
         systemctl enable auditd.service --root=/mnt &>/dev/null
+        echo "write-cache" >> /mnt/etc/apparmor/parser.conf
+        echo "Optimize=compress-fast" >> /mnt/etc/apparmor/parser.conf
     else
         cat > /mnt/etc/cmdline.d/security.conf <<EOF
-# enable apparmor
+# apparmor disabled
 # lsm=landlock,lockdown,yama,integrity,apparmor,bpf audit=1 audit_backlog_limit=256
 EOF
     fi
-
-    echo "write-cache" >> /mnt/etc/apparmor/parser.conf
-    echo "Optimize=compress-fast" >> /mnt/etc/apparmor/parser.conf
 }
 
 network_installer() {
@@ -160,7 +160,7 @@ network_installer() {
 }
 
 microcode_detector() {
-    CPU=$(grep vendor_id /proc/cpuinfo)
+    CPU=$(grep -m1 vendor_id /proc/cpuinfo)
     if [[ "$CPU" == *"AuthenticAMD"* ]]; then
         show_info "AMD CPU detected, AMD microcode will be installed"
         microcode="amd-ucode"
@@ -315,10 +315,15 @@ show_info "Network: $network_selection"
 gum style --foreground 212 --bold --margin "1 0" "Hostname"
 while true; do
     hostname=$(gum input --header "Enter hostname:" --placeholder "archlinux" --char-limit 63)
-    if [[ -n "$hostname" ]]; then
-        break
+    if [[ -z "$hostname" ]]; then
+        show_error "You need to enter a hostname"
+        continue
     fi
-    show_error "You need to enter a hostname"
+    if [[ ! "$hostname" =~ ^[a-zA-Z0-9]([a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?$ ]]; then
+        show_error "Invalid hostname. Use only letters, digits, and hyphens. Must not start or end with a hyphen."
+        continue
+    fi
+    break
 done
 show_info "Hostname: $hostname"
 
@@ -347,10 +352,15 @@ show_info "Mirror country: $reflector_country"
 gum style --foreground 212 --bold --margin "1 0" "User Account"
 while true; do
     username=$(gum input --header "Enter username:" --placeholder "user")
-    if [[ -n "$username" ]]; then
-        break
+    if [[ -z "$username" ]]; then
+        show_error "You need to enter a username"
+        continue
     fi
-    show_error "You need to enter a username"
+    if [[ ! "$username" =~ ^[a-z_][a-z0-9_-]{0,31}$ ]]; then
+        show_error "Invalid username. Use lowercase letters, digits, underscores, or hyphens. Must start with a letter or underscore (max 32 chars)."
+        continue
+    fi
+    break
 done
 show_info "Username: $username"
 
@@ -448,11 +458,16 @@ while true; do
 
     device_path=$(echo "$device" | awk '{print $1}')
     show_info "Opening fdisk for $device_path"
-    fdisk "$device_path"
+    fdisk "$device_path" || true
 done
 
 # Build partition list for selection
 partitions=$(lsblk --paths --list --noheadings --output=name,size,model,type,fstype,mountpoints | awk '$4 == "part"')
+
+if [[ -z "$partitions" ]]; then
+    show_error "No partitions found. Please partition a disk first."
+    exit 1
+fi
 
 # --- EFI partition ---
 gum style --foreground 212 --bold --margin "1 0" "Select Partitions"
@@ -548,7 +563,7 @@ fi
 microcode_detector
 
 show_info "Installing the base system (pacstrap) - this may take a while"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware apparmor nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim nnn tldr jq restic fuse2 fuse3 >/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim nnn tldr jq restic fuse2 fuse3 >/dev/null
 show_info "Base system installed"
 
 ####################################################################################################
@@ -726,7 +741,7 @@ done
 
 show_info "Building EFISTUB entries"
 
-efi_dev=$(lsblk --noheadings --output PKNAME "$ESP")
+efi_dev=$(lsblk --noheadings --raw --output PKNAME "$ESP")
 efi_part_num=$(echo "$ESP" | grep -Eo '[0-9]+$')
 
 arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part "${efi_part_num}" --label "arch-linux-lts" --loader "EFI\Linux\arch-linux-lts.efi" --unicode
@@ -844,7 +859,6 @@ arch-chroot /mnt /usr/local/sbin/restic-system-init
 ####################################################################################################
 
 show_info "Locking root account"
-arch-chroot /mnt passwd -d root &>/dev/null
 arch-chroot /mnt passwd -l root &>/dev/null
 
 ####################################################################################################
@@ -853,9 +867,11 @@ arch-chroot /mnt passwd -l root &>/dev/null
 
 if [ "$tpm_enroll" = "yes" ]; then
     show_info "Enrolling TPM2 LUKS key with PIN: the password to unlock the root volume is your user password"
-    systemd-cryptenroll "$ROOT" --wipe-slot=all --tpm2-device=auto --tpm2-pcrs=7 --tpm2-with-pin=yes
+    systemd-cryptenroll "$ROOT" --tpm2-device=auto --tpm2-pcrs=7 --tpm2-with-pin=yes
     show_info "Enrolling recovery key"
-    systemd-cryptenroll "$ROOT" --recovery-key --unlock-tpm2-device=auto
+    systemd-cryptenroll "$ROOT" --recovery-key
+    show_info "Removing original password keyslot"
+    systemd-cryptenroll "$ROOT" --wipe-slot=password
 fi
 
 ####################################################################################################
@@ -878,8 +894,8 @@ if sbctl status | grep -q 'Setup Mode:.*Enabled'; then
   sbctl status
 else
   echo "Secure Boot is not in setup mode, aborting"
+  exit 1
 fi
-exit
 EOF
 
     # Re-install kernel to trigger sbctl pacman hook to sign UKIs
