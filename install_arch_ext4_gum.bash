@@ -761,6 +761,39 @@ EOF
 show_info "Enabling nftables firewall"
 systemctl enable nftables.service --root=/mnt &>/dev/null
 
+####################################################################################################
+# Disable suspend and hibernate
+####################################################################################################
+
+show_info "Masking sleep-related systemd targets"
+systemctl mask suspend.target --root=/mnt &>/dev/null
+systemctl mask hibernate.target --root=/mnt &>/dev/null
+systemctl mask hybrid-sleep.target --root=/mnt &>/dev/null
+systemctl mask suspend-then-hibernate.target --root=/mnt &>/dev/null
+
+show_info "Configuring logind to ignore sleep events"
+mkdir -p /mnt/etc/systemd/logind.conf.d
+cat > /mnt/etc/systemd/logind.conf.d/no-sleep.conf <<EOF
+[Login]
+HandleLidSwitch=lock
+HandleLidSwitchExternalPower=lock
+HandleLidSwitchDocked=ignore
+HandlePowerKey=poweroff
+HandleSuspendKey=ignore
+HandleHibernateKey=ignore
+IdleAction=ignore
+EOF
+
+show_info "Disabling sleep at the systemd-sleep level"
+mkdir -p /mnt/etc/systemd/sleep.conf.d
+cat > /mnt/etc/systemd/sleep.conf.d/no-sleep.conf <<EOF
+[Sleep]
+AllowSuspend=no
+AllowHibernation=no
+AllowSuspendThenHibernate=no
+AllowHybridSleep=no
+EOF
+
 show_info "Configuring pacman: colors, animations, parallel downloads"
 sed -Ei 's/^#(Color)$/\1\nILoveCandy/;s/^#(ParallelDownloads).*/\1 = 10/' /mnt/etc/pacman.conf
 
