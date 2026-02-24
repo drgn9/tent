@@ -629,6 +629,20 @@ mkdir -p /mnt/etc/mkinitcpio.d
 show_info "Configuring AppArmor"
 apparmor_installer
 
+show_info "Configuring IOMMU hardening"
+CPU=$(grep -m1 vendor_id /proc/cpuinfo)
+if [[ "$CPU" == *"AuthenticAMD"* ]]; then
+    cat > /mnt/etc/cmdline.d/iommu.conf <<EOF
+# DMA protection: force IOMMU, disable passthrough, strict TLB invalidation
+iommu=force iommu.passthrough=0 iommu.strict=1
+EOF
+else
+    cat > /mnt/etc/cmdline.d/iommu.conf <<EOF
+# DMA protection: force IOMMU, disable passthrough, strict TLB invalidation
+iommu=force iommu.passthrough=0 iommu.strict=1 intel_iommu=on
+EOF
+fi
+
 show_info "Configuring mkinitcpio"
 
 if [ "$encrypt_root" = "yes" ]; then
