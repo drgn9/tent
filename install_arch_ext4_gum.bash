@@ -288,6 +288,16 @@ else
     show_info "AppArmor: disabled"
 fi
 
+# --- Kernel Lockdown ---
+gum style --foreground 212 --bold --margin "1 0" "Kernel Lockdown"
+if gum confirm "Enable kernel lockdown (integrity mode)?"; then
+    use_lockdown="yes"
+    show_info "Kernel lockdown: enabled (integrity)"
+else
+    use_lockdown="no"
+    show_info "Kernel lockdown: disabled"
+fi
+
 # --- Network ---
 gum style --foreground 212 --bold --margin "1 0" "Network"
 network_selection=$(gum choose --header "Select network configuration:" \
@@ -379,13 +389,14 @@ gum style --foreground 212 --bold --margin "1 0" "Installation Summary"
 encrypt_label="no"
 [ "$encrypt_root" = "yes" ] && encrypt_label="yes (LUKS)"
 tpm_label="no"
-[ "$tpm_enroll" = "yes" ] && tpm_label="yes (PCR 7 + PIN + recovery key)"
+[ "$tpm_enroll" = "yes" ] && tpm_label="yes (PIN + recovery key)"
 
 gum style --border rounded --border-foreground 212 --padding "1 2" --margin "0 2" \
     "Encryption:      $encrypt_label" \
     "TPM2 + PIN:      $tpm_label" \
     "Secure Boot:     $secure_boot" \
     "AppArmor:        $use_apparmor" \
+    "Lockdown:        $use_lockdown" \
     "Network:         $network_selection" \
     "Hostname:        $hostname" \
     "Timezone:        $timezone" \
@@ -640,6 +651,14 @@ else
     cat > /mnt/etc/cmdline.d/iommu.conf <<EOF
 # DMA protection: force IOMMU, disable passthrough, strict TLB invalidation
 iommu=force iommu.passthrough=0 iommu.strict=1 intel_iommu=on
+EOF
+fi
+
+if [ "$use_lockdown" = "yes" ]; then
+    show_info "Configuring kernel lockdown (integrity mode)"
+    cat > /mnt/etc/cmdline.d/lockdown.conf <<EOF
+# Kernel lockdown: prevent modification of the running kernel
+lockdown=integrity
 EOF
 fi
 
@@ -902,6 +921,7 @@ if sbctl status | grep -q 'Setup Mode:.*Enabled'; then
   sbctl enroll-keys -m
   sbctl sign -s /efi/EFI/Linux/arch-linux.efi
   sbctl sign -s /efi/EFI/Linux/arch-linux-lts.efi
+  sbctl sign -s /usr/lib/fwupd/efi/fwupdx64.efi
 
   sbctl verify
   sbctl status
@@ -924,7 +944,7 @@ echo ""
 
 if [ "$encrypt_root" = "yes" ]; then
     if [ "$tpm_enroll" = "yes" ]; then
-        show_info "Root partition is encrypted (LUKS) with TPM2 (PCR 7) and PIN. A recovery key has also been enrolled."
+        show_info "Root partition is encrypted (LUKS) with TPM2 and PIN. A recovery key has also been enrolled."
         show_info "Use systemd-cryptenroll to manage enrollment slots."
     else
         show_info "Root partition is encrypted (LUKS) with user password. Use systemd-cryptenroll to enroll tpm2 or change the password."
