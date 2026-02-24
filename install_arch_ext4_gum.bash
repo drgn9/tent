@@ -238,17 +238,36 @@ else
     show_info "Root encryption: disabled"
 fi
 
-# --- TPM2 enrollment ---
+# --- Unlock method ---
+fido2_backup="no"
 if [ "$encrypt_root" = "yes" ]; then
-    if gum confirm "Enroll a TPM2 LUKS key with PIN?"; then
-        tpm_enroll="yes"
-        show_info "TPM2 enrollment: enabled"
-    else
-        tpm_enroll="no"
-        show_info "TPM2 enrollment: disabled"
-    fi
+    unlock_method=$(gum choose --header "Select LUKS unlock method:" \
+        "TPM2 + PIN" \
+        "FIDO2 + PIN" \
+        "Passphrase only")
+
+    case "$unlock_method" in
+        "TPM2 + PIN")
+            unlock_method="tpm2"
+            show_info "Unlock method: TPM2 + PIN"
+            ;;
+        "FIDO2 + PIN")
+            unlock_method="fido2"
+            show_info "Unlock method: FIDO2 + PIN"
+            if gum confirm "Enroll a backup FIDO2 key?"; then
+                fido2_backup="yes"
+                show_info "Backup FIDO2 key: enabled"
+            else
+                show_info "Backup FIDO2 key: disabled"
+            fi
+            ;;
+        "Passphrase only")
+            unlock_method="passphrase"
+            show_info "Unlock method: passphrase"
+            ;;
+    esac
 else
-    tpm_enroll="no"
+    unlock_method="none"
 fi
 
 # --- Secure Boot ---
@@ -388,12 +407,23 @@ gum style --foreground 212 --bold --margin "1 0" "Installation Summary"
 
 encrypt_label="no"
 [ "$encrypt_root" = "yes" ] && encrypt_label="yes (LUKS)"
-tpm_label="no"
-[ "$tpm_enroll" = "yes" ] && tpm_label="yes (PIN + recovery key)"
+
+unlock_label="none"
+case "$unlock_method" in
+    tpm2)       unlock_label="TPM2 + PIN (with recovery key)" ;;
+    fido2)
+        if [ "$fido2_backup" = "yes" ]; then
+            unlock_label="FIDO2 + PIN (primary + backup key, with recovery key)"
+        else
+            unlock_label="FIDO2 + PIN (with recovery key)"
+        fi
+        ;;
+    passphrase) unlock_label="passphrase" ;;
+esac
 
 gum style --border rounded --border-foreground 212 --padding "1 2" --margin "0 2" \
     "Encryption:      $encrypt_label" \
-    "TPM2 + PIN:      $tpm_label" \
+    "Unlock method:   $unlock_label" \
     "Secure Boot:     $secure_boot" \
     "AppArmor:        $use_apparmor" \
     "Lockdown:        $use_lockdown" \
@@ -565,7 +595,7 @@ fi
 microcode_detector
 
 show_info "Installing the base system (pacstrap) - this may take a while"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic rclone age gocryptfs fuse2 fuse3 vim jq fwupd >/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite pcsc-tools audit man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic rclone age gocryptfs fuse2 fuse3 vim jq fwupd >/dev/null
 show_info "Base system installed"
 
 ####################################################################################################
@@ -666,8 +696,10 @@ show_info "Configuring mkinitcpio"
 
 if [ "$encrypt_root" = "yes" ]; then
 
-    if [ "$tpm_enroll" = "yes" ]; then
+    if [ "$unlock_method" = "tpm2" ]; then
         echo "cryptroot  UUID=$ROOT_UUID  none  tpm2-device=auto,password-echo=no,x-systemd.device-timeout=0,timeout=0,no-read-workqueue,no-write-workqueue"  >>  /mnt/etc/crypttab.initramfs
+    elif [ "$unlock_method" = "fido2" ]; then
+        echo "cryptroot  UUID=$ROOT_UUID  none  fido2-device=auto,password-echo=no,x-systemd.device-timeout=30,timeout=0,no-read-workqueue,no-write-workqueue"  >>  /mnt/etc/crypttab.initramfs
     else
         echo "cryptroot  UUID=$ROOT_UUID  none  password-echo=no,x-systemd.device-timeout=0,timeout=0,no-read-workqueue,no-write-workqueue"  >>  /mnt/etc/crypttab.initramfs
     fi
@@ -867,7 +899,7 @@ show_info "Installing paru"
 
 arch-chroot /mnt runuser -u "$username" -- bash -c '
     cd ~
-    git clone https://aur.archlinux.org/paru-bin.git &>/dev/null
+    git clone https://aur.archlinux.org/paru-bin.git >/dev/null
     cd paru-bin
     makepkg -si --noconfirm >/dev/null
     cd ~
@@ -894,12 +926,33 @@ show_info "Locking root account"
 arch-chroot /mnt passwd -l root &>/dev/null
 
 ####################################################################################################
-# TPM2 enrollment
+# LUKS key enrollment (TPM2 or FIDO2)
 ####################################################################################################
 
-if [ "$tpm_enroll" = "yes" ]; then
+if [ "$unlock_method" = "tpm2" ]; then
     show_info "Enrolling TPM2 LUKS key with PIN: the password to unlock the root volume is your user password"
     systemd-cryptenroll "$ROOT" --tpm2-device=auto --tpm2-with-pin=yes
+    show_info "Enrolling recovery key"
+    systemd-cryptenroll "$ROOT" --recovery-key
+    show_info "Removing original password keyslot"
+    systemd-cryptenroll "$ROOT" --wipe-slot=password
+elif [ "$unlock_method" = "fido2" ]; then
+    gum style --foreground 212 --bold --margin "1 0" "FIDO2 Enrollment"
+    gum style --foreground 214 --margin "0 2" \
+        "Insert your primary FIDO2 key and press Enter to continue."
+    gum confirm "Primary FIDO2 key is inserted?" || { show_error "FIDO2 enrollment cancelled"; exit 1; }
+    show_info "Enrolling primary FIDO2 key with PIN"
+    systemd-cryptenroll "$ROOT" --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa
+
+    if [ "$fido2_backup" = "yes" ]; then
+        gum style --foreground 214 --margin "1 2" \
+            "Remove the primary FIDO2 key." \
+            "Insert your backup FIDO2 key and press Enter to continue."
+        gum confirm "Backup FIDO2 key is inserted?" || { show_error "Backup FIDO2 key enrollment cancelled"; exit 1; }
+        show_info "Enrolling backup FIDO2 key with PIN"
+        systemd-cryptenroll "$ROOT" --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa
+    fi
+
     show_info "Enrolling recovery key"
     systemd-cryptenroll "$ROOT" --recovery-key
     show_info "Removing original password keyslot"
@@ -943,12 +996,24 @@ fi
 echo ""
 
 if [ "$encrypt_root" = "yes" ]; then
-    if [ "$tpm_enroll" = "yes" ]; then
-        show_info "Root partition is encrypted (LUKS) with TPM2 and PIN. A recovery key has also been enrolled."
-        show_info "Use systemd-cryptenroll to manage enrollment slots."
-    else
-        show_info "Root partition is encrypted (LUKS) with user password. Use systemd-cryptenroll to enroll tpm2 or change the password."
-    fi
+    case "$unlock_method" in
+        tpm2)
+            show_info "Root partition is encrypted (LUKS) with TPM2 + PIN. A recovery key has also been enrolled."
+            show_info "Use systemd-cryptenroll to manage enrollment slots."
+            ;;
+        fido2)
+            if [ "$fido2_backup" = "yes" ]; then
+                show_info "Root partition is encrypted (LUKS) with two FIDO2 keys + PIN. A recovery key has also been enrolled."
+            else
+                show_info "Root partition is encrypted (LUKS) with FIDO2 + PIN. A recovery key has also been enrolled."
+            fi
+            show_info "If no FIDO2 key is present at boot, the system will wait 30 seconds then fall back to a passphrase prompt (use the recovery key)."
+            show_info "Use systemd-cryptenroll to manage enrollment slots."
+            ;;
+        passphrase)
+            show_info "Root partition is encrypted (LUKS) with user password. Use systemd-cryptenroll to enroll TPM2, FIDO2, or change the password."
+            ;;
+    esac
 fi
 
 gum style \

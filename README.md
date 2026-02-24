@@ -7,6 +7,7 @@ An interactive, security-focused Arch Linux installation script with a terminal 
 - **Interactive TUI** -- guided prompts for every decision; no config files to edit beforehand
 - **LUKS encryption** -- optional full-disk encryption using `serpent-xts-plain64` (512-bit key, SHA-512), a cipher chosen for its high security margin
 - **TPM2 + PIN unlock** -- optional automatic unlock sealed to the TPM2 chip with a PIN and a recovery key
+- **FIDO2 + PIN unlock** -- optional LUKS unlock with a FIDO2 security key (e.g., YubiKey) and a PIN, with optional backup key enrollment and a recovery key
 - **Secure Boot** -- optional enrollment of custom Secure Boot keys via `sbctl`, with automatic UKI and fwupd EFI binary signing
 - **Kernel lockdown** -- optional `lockdown=integrity` mode, preventing modification of the running kernel (unsigned module loading, `/dev/mem` writes, kexec, etc.)
 - **AppArmor** -- optional mandatory access control with audit logging
@@ -57,7 +58,8 @@ You are asked to configure the following, in order:
 | Prompt | Options | Notes |
 |--------|---------|-------|
 | LUKS encryption | yes / no | Encrypts the root partition |
-| TPM2 + PIN | yes / no | Only shown if encryption is enabled |
+| Unlock method | TPM2+PIN / FIDO2+PIN / Passphrase only | Only shown if encryption is enabled |
+| Backup FIDO2 key | yes / no | Only shown if FIDO2 is selected |
 | Secure Boot | yes / no | Requires Setup Mode (script checks and exits with instructions if not) |
 | AppArmor | yes / no | Installs and enables AppArmor + audit |
 | Kernel lockdown | yes / no | Enables `lockdown=integrity` via kernel cmdline |
@@ -100,7 +102,7 @@ The script validates that all selected partitions are distinct.
 
 - `base`, `base-devel`, `linux`, `linux-lts` (with headers and firmware)
 - CPU microcode (auto-detected: `amd-ucode` or `intel-ucode`)
-- Security tools: `cryptsetup`, `nftables`, `openssh`, `tpm2-tools`, `libfido2`, `pam-u2f`, `pcsclite`, `efitools`, `fwupd`
+- Security tools: `cryptsetup`, `nftables`, `openssh`, `tpm2-tools`, `libfido2`, `pam-u2f`, `pcsclite`, `pcsc-tools`, `audit`, `efitools`, `fwupd`
 - System utilities: `reflector`, `zram-generator`, `sudo`, `bash-completion`, `man-db`, `dosfstools`, `efibootmgr`
 - User tools: `curl`, `wget`, `git`, `rsync`, `stow`, `restic`, `rclone`, `age`, `gocryptfs`, `fuse2`, `fuse3`, `vim`, `jq`
 
@@ -156,15 +158,27 @@ There is no bootloader. The UEFI firmware loads the UKI directly. Use your firmw
 
 The root account is locked (`passwd -l root`). All administration is done via `sudo`.
 
-### 12. TPM2 enrollment (if enabled)
+### 12. LUKS key enrollment (if TPM2 or FIDO2 is enabled)
 
-If you opted for TPM2 + PIN:
+#### TPM2 + PIN
 
-1. A TPM2 key is enrolled with a PIN (the PIN is your user password)
+1. A TPM2 key is enrolled with a PIN
 2. A recovery key is enrolled (displayed on screen -- **write it down**)
 3. The original password keyslot is removed
 
-At boot, the system unlocks when you enter the correct PIN. The recovery key can be used as a fallback if needed.
+At boot, the system unlocks when the TPM2 unseals the key and you enter the correct PIN. The recovery key can be used as a fallback if the TPM is cleared or the firmware changes.
+
+#### FIDO2 + PIN
+
+1. You are prompted to insert your primary FIDO2 key
+2. The primary FIDO2 key is enrolled with a client PIN (Ed25519 / `eddsa` credential algorithm)
+3. If you opted for a backup key: you are prompted to swap keys, then the backup FIDO2 key is enrolled with its own PIN
+4. A recovery key is enrolled (displayed on screen -- **write it down**)
+5. The original password keyslot is removed
+
+At boot, `sd-encrypt` tries to detect a FIDO2 device. If found, it prompts for the FIDO2 PIN and unlocks. If no FIDO2 device is present within 30 seconds, it falls back to a passphrase prompt where you can enter the recovery key.
+
+Either the primary or backup FIDO2 key will work at the boot prompt -- they are independent LUKS keyslots.
 
 ### 13. Secure Boot (if enabled)
 
@@ -336,6 +350,7 @@ When LUKS encryption is enabled:
 - **Why Serpent**: Serpent was an AES finalist with a more conservative design (32 rounds vs AES's 14). It has a higher security margin than AES at the cost of throughput. It does not benefit from hardware acceleration (AES-NI). This is an intentional trade-off favoring security over raw I/O speed.
 - **systemd-based unlock**: uses `sd-encrypt` in the initramfs with `crypttab.initramfs`
 - **TPM2 binding** (optional): the unlock key is sealed to the TPM2 chip, requiring a PIN to unseal. A recovery key is also enrolled for emergencies.
+- **FIDO2 binding** (optional): the unlock key is tied to a FIDO2 security key with a client PIN (Ed25519 credential). A backup FIDO2 key and a recovery key can also be enrolled. If no FIDO2 device is present at boot, `sd-encrypt` falls back to a passphrase prompt after a 30-second timeout.
 
 ## Post-Installation
 
