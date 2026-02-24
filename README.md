@@ -16,7 +16,6 @@ An interactive, security-focused Arch Linux installation script with a terminal 
 - **ZRAM swap** -- compressed swap in memory via `zram-generator` (zstd, capped at half RAM or 4 GiB)
 - **Kernel hardening** -- sysctl tunables for network firewall hardening, watchdog disabled, ZRAM-optimized VM settings
 - **Module blacklisting** -- PC speaker, watchdog timers, and FireWire disabled by default; additional configs for disabling Bluetooth, webcam, microphone, and Thunderbolt are included in the settings directory for manual use
-- **Restic backup system** -- automatic pre/post pacman transaction snapshots with scripts for manual backup, restore, and repository initialization
 - **AUR helper** -- `paru` installed automatically
 - **Root account locked** -- root login is disabled; administration is done through `sudo` via the `wheel` group
 
@@ -147,14 +146,6 @@ There is no bootloader. The UEFI firmware loads the UKI directly. Use your firmw
 A restic-based backup system is deployed:
 
 - **Repository**: stored at `/.snapshots/system` (on the snapshot partition if configured, otherwise on root)
-- **Encryption**: a random 24-character alphanumeric key is generated and stored at `/etc/restic/key_file` (mode 600)
-- **Pacman hooks**: automatic pre-transaction and post-transaction snapshots on every package operation
-- **Manual tools** (installed to `/usr/local/sbin/`):
-  - `restic-system` -- wrapper that loads the restic environment
-  - `restic-system-backup <comment>` -- take a manual snapshot with a comment tag
-  - `restic-system-rollback <snapshot_id>` -- restore a snapshot (with dry-run option)
-  - `restic-system-init` -- initialize the restic repository (run automatically during install)
-- **Exclusions**: `/home`, `/dev`, `/proc`, `/sys`, `/tmp`, `/var/cache`, `/var/log`, container/VM storage, and the snapshot directory itself are excluded from backups
 
 ### 12. Root account lockdown
 
@@ -215,18 +206,6 @@ install-arch/
     │   ├── NetworkManager.conf         # NetworkManager: use systemd-resolved for DNS
     │   ├── resolved.conf               # systemd-resolved: Quad9 + Cloudflare, DoT, no mDNS/LLMNR
     │   └── wait-for-only-one-interface.conf  # Wait for any single interface (faster boot)
-    ├── restic/
-    │   ├── env_file                    # Restic environment: repo path, password file, cache dir
-    │   ├── exclude_file                # Paths excluded from backups
-    │   ├── hooks/
-    │   │   ├── 05-system-snap-pre.hook     # Pacman pre-transaction snapshot
-    │   │   └── zzz-system-snap-post.hook   # Pacman post-transaction snapshot
-    │   └── scripts/
-    │       ├── restic-system               # Restic wrapper with environment loaded
-    │       ├── restic-system-backup        # Manual backup with comment tag
-    │       ├── restic-system-backup-auto   # Automatic backup (called by pacman hooks)
-    │       ├── restic-system-init          # Repository initialization with random key
-    │       └── restic-system-rollback      # Restore a snapshot (with dry-run support)
     └── sysctl/
         ├── 99-firewall-settings.conf   # Network hardening: SYN cookies, RP filter, no redirects
         ├── 99-watchdog-settings.conf   # Disable NMI watchdog
@@ -286,7 +265,6 @@ After the script completes:
 - Connect to Wi-Fi (if using iwd): `iwctl station wlan0 connect <SSID>`
 - Connect to Wi-Fi (if using NetworkManager): `nmtui`
 - Install a desktop environment, window manager, or any additional packages via `paru`
-- Initialize your restic backup (already done during install, but verify): `sudo restic-system snapshots`
 - Review and customize sysctl, modprobe, and network configs in `/etc/`
 
 ## Error Handling

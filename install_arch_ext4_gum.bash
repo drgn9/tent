@@ -76,15 +76,6 @@ required_paths=(
     /root/install-arch/settings/modprobe/blacklist.conf
     /root/install-arch/settings/modprobe/disable-firewire.conf
     /root/install-arch/settings/modprobe/iwlwifi.conf
-    /root/install-arch/settings/restic/env_file
-    /root/install-arch/settings/restic/exclude_file
-    /root/install-arch/settings/restic/hooks/05-system-snap-pre.hook
-    /root/install-arch/settings/restic/hooks/zzz-system-snap-post.hook
-    /root/install-arch/settings/restic/scripts/restic-system-backup-auto
-    /root/install-arch/settings/restic/scripts/restic-system-init
-    /root/install-arch/settings/restic/scripts/restic-system
-    /root/install-arch/settings/restic/scripts/restic-system-backup
-    /root/install-arch/settings/restic/scripts/restic-system-rollback
 )
 
 missing_paths=()
@@ -563,7 +554,7 @@ fi
 microcode_detector
 
 show_info "Installing the base system (pacstrap) - this may take a while"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow neovim nnn tldr jq restic fuse2 fuse3 >/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic fuse2 fuse3 vim jq >/dev/null
 show_info "Base system installed"
 
 ####################################################################################################
@@ -826,33 +817,8 @@ arch-chroot /mnt chmod 0440 /etc/sudoers.d/wheel
 # Restic configuration
 ####################################################################################################
 
-show_info "Configuring restic"
-mkdir -p /mnt/etc/restic
-mkdir -p /mnt/etc/pacman.d/hooks
-mkdir -p /mnt/etc/pacman.d/scripts
+show_info "creating restic cache directory"
 mkdir -p /mnt/var/cache/restic
-
-cp /root/install-arch/settings/restic/env_file /mnt/etc/restic/env_file
-cp /root/install-arch/settings/restic/exclude_file /mnt/etc/restic/exclude_file
-
-cp /root/install-arch/settings/restic/hooks/05-system-snap-pre.hook /mnt/etc/pacman.d/hooks/05-system-snap-pre.hook
-cp /root/install-arch/settings/restic/hooks/zzz-system-snap-post.hook /mnt/etc/pacman.d/hooks/zzz-system-snap-post.hook
-cp /root/install-arch/settings/restic/scripts/restic-system-backup-auto /mnt/etc/pacman.d/scripts/restic-system-backup-auto
-arch-chroot /mnt chmod +x /etc/pacman.d/scripts/restic-system-backup-auto
-
-cp /root/install-arch/settings/restic/scripts/restic-system-init /mnt/usr/local/sbin/restic-system-init
-cp /root/install-arch/settings/restic/scripts/restic-system /mnt/usr/local/sbin/restic-system
-cp /root/install-arch/settings/restic/scripts/restic-system-backup /mnt/usr/local/sbin/restic-system-backup
-cp /root/install-arch/settings/restic/scripts/restic-system-rollback /mnt/usr/local/sbin/restic-system-rollback
-
-arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-init
-arch-chroot /mnt chmod +x /usr/local/sbin/restic-system
-arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-backup
-arch-chroot /mnt chmod +x /usr/local/sbin/restic-system-rollback
-arch-chroot /mnt chmod +x /etc/pacman.d/scripts/restic-system-backup-auto
-
-show_info "Initializing restic system repo"
-arch-chroot /mnt /usr/local/sbin/restic-system-init
 
 ####################################################################################################
 # Lock root account
