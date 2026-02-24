@@ -554,7 +554,7 @@ fi
 microcode_detector
 
 show_info "Installing the base system (pacstrap) - this may take a while"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic fuse2 fuse3 vim jq >/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic rclone age gocryptfs fuse2 fuse3 vim jq fwupd >/dev/null
 show_info "Base system installed"
 
 ####################################################################################################
@@ -880,7 +880,7 @@ arch-chroot /mnt passwd -l root &>/dev/null
 
 if [ "$tpm_enroll" = "yes" ]; then
     show_info "Enrolling TPM2 LUKS key with PIN: the password to unlock the root volume is your user password"
-    systemd-cryptenroll "$ROOT" --tpm2-device=auto --tpm2-pcrs=7 --tpm2-with-pin=yes
+    systemd-cryptenroll "$ROOT" --tpm2-device=auto --tpm2-with-pin=yes
     show_info "Enrolling recovery key"
     systemd-cryptenroll "$ROOT" --recovery-key
     show_info "Removing original password keyslot"
