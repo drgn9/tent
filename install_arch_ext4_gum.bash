@@ -63,19 +63,19 @@ show_warn() {
 }
 
 required_paths=(
-    /root/install-arch/settings/network/NetworkManager.conf
-    /root/install-arch/settings/network/20-wired.network
-    /root/install-arch/settings/network/wait-for-only-one-interface.conf
-    /root/install-arch/settings/network/25-wireless.network
-    /root/install-arch/settings/network/iwd.main.conf
-    /root/install-arch/settings/network/iwd.override.conf
-    /root/install-arch/settings/network/resolved.conf
-    /root/install-arch/settings/sysctl/99-firewall-settings.conf
-    /root/install-arch/settings/sysctl/99-watchdog-settings.conf
-    /root/install-arch/settings/sysctl/99-zram-settings.conf
-    /root/install-arch/settings/modprobe/blacklist.conf
-    /root/install-arch/settings/modprobe/disable-firewire.conf
-    /root/install-arch/settings/modprobe/iwlwifi.conf
+    /root/tent/settings/network/NetworkManager.conf
+    /root/tent/settings/network/20-wired.network
+    /root/tent/settings/network/wait-for-only-one-interface.conf
+    /root/tent/settings/network/25-wireless.network
+    /root/tent/settings/network/iwd.main.conf
+    /root/tent/settings/network/iwd.override.conf
+    /root/tent/settings/network/resolved.conf
+    /root/tent/settings/sysctl/99-firewall-settings.conf
+    /root/tent/settings/sysctl/99-watchdog-settings.conf
+    /root/tent/settings/sysctl/99-zram-settings.conf
+    /root/tent/settings/modprobe/blacklist.conf
+    /root/tent/settings/modprobe/disable-firewire.conf
+    /root/tent/settings/modprobe/iwlwifi.conf
 )
 
 missing_paths=()
@@ -144,7 +144,7 @@ network_installer() {
         3)
             show_info "Installing and enabling NetworkManager"
             pacstrap /mnt networkmanager network-manager-applet nm-connection-editor >/dev/null
-            cp /root/install-arch/settings/network/NetworkManager.conf /mnt/etc/NetworkManager/NetworkManager.conf
+            cp /root/tent/settings/network/NetworkManager.conf /mnt/etc/NetworkManager/NetworkManager.conf
             systemctl enable NetworkManager.service --root=/mnt &>/dev/null
             ;;
     esac
@@ -162,22 +162,22 @@ microcode_detector() {
 }
 
 set_sysctl() {
-    cp /root/install-arch/settings/sysctl/99-firewall-settings.conf /mnt/etc/sysctl.d/99-firewall-settings.conf
-    cp /root/install-arch/settings/sysctl/99-watchdog-settings.conf /mnt/etc/sysctl.d/99-watchdog-settings.conf
-    cp /root/install-arch/settings/sysctl/99-zram-settings.conf /mnt/etc/sysctl.d/99-zram-settings.conf
+    cp /root/tent/settings/sysctl/99-firewall-settings.conf /mnt/etc/sysctl.d/99-firewall-settings.conf
+    cp /root/tent/settings/sysctl/99-watchdog-settings.conf /mnt/etc/sysctl.d/99-watchdog-settings.conf
+    cp /root/tent/settings/sysctl/99-zram-settings.conf /mnt/etc/sysctl.d/99-zram-settings.conf
 }
 
 set_modprobe() {
-    cp /root/install-arch/settings/modprobe/blacklist.conf /mnt/etc/modprobe.d/blacklist.conf
-    cp /root/install-arch/settings/modprobe/disable-firewire.conf /mnt/etc/modprobe.d/disable-firewire.conf
-    cp /root/install-arch/settings/modprobe/iwlwifi.conf /mnt/etc/modprobe.d/iwlwifi.conf
+    cp /root/tent/settings/modprobe/blacklist.conf /mnt/etc/modprobe.d/blacklist.conf
+    cp /root/tent/settings/modprobe/disable-firewire.conf /mnt/etc/modprobe.d/disable-firewire.conf
+    cp /root/tent/settings/modprobe/iwlwifi.conf /mnt/etc/modprobe.d/iwlwifi.conf
 }
 
 set_systemd_networkd() {
     mkdir -p /mnt/etc/systemd/network
     mkdir -p /mnt/etc/systemd/system/systemd-networkd-wait-online.service.d
-    cp /root/install-arch/settings/network/20-wired.network /mnt/etc/systemd/network/20-wired.network
-    cp /root/install-arch/settings/network/wait-for-only-one-interface.conf /mnt/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf
+    cp /root/tent/settings/network/20-wired.network /mnt/etc/systemd/network/20-wired.network
+    cp /root/tent/settings/network/wait-for-only-one-interface.conf /mnt/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf
     if [[ -f /mnt/etc/systemd/networkd.conf ]]; then
         sed -i '/^#ManageForeignRoutingPolicyRules=yes/c\ManageForeignRoutingPolicyRules=no' /mnt/etc/systemd/networkd.conf
     else
@@ -192,9 +192,9 @@ set_iwd() {
     mkdir -p /mnt/etc/systemd/network
     mkdir -p /mnt/etc/iwd
     mkdir -p /mnt/etc/systemd/system/iwd.service.d
-    cp /root/install-arch/settings/network/25-wireless.network /mnt/etc/systemd/network/25-wireless.network
-    cp /root/install-arch/settings/network/iwd.main.conf /mnt/etc/iwd/main.conf
-    cp /root/install-arch/settings/network/iwd.override.conf /mnt/etc/systemd/system/iwd.service.d/override.conf
+    cp /root/tent/settings/network/25-wireless.network /mnt/etc/systemd/network/25-wireless.network
+    cp /root/tent/settings/network/iwd.main.conf /mnt/etc/iwd/main.conf
+    cp /root/tent/settings/network/iwd.override.conf /mnt/etc/systemd/system/iwd.service.d/override.conf
     if [[ -d /var/lib/iwd ]]; then
         cp -r /var/lib/iwd /mnt/var/lib
     fi
@@ -202,7 +202,7 @@ set_iwd() {
 
 set_systemd_resolved() {
     ln -sf /run/systemd/resolve/stub-resolv.conf /mnt/etc/resolv.conf
-    cp /root/install-arch/settings/network/resolved.conf /mnt/etc/systemd/resolved.conf
+    cp /root/tent/settings/network/resolved.conf /mnt/etc/systemd/resolved.conf
     systemctl enable systemd-resolved --root=/mnt &>/dev/null
 }
 
