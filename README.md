@@ -17,7 +17,6 @@ An interactive, security-focused Arch Linux installation script with a terminal 
 - **Firmware updates** -- `fwupd` installed for UEFI and device firmware updates via the Linux Vendor Firmware Service (LVFS)
 - **Network choice** -- choose between `iwd + systemd-networkd`, `systemd-networkd` only, or `NetworkManager`
 - **DNS over TLS** -- preconfigured `systemd-resolved` with Quad9 and Cloudflare upstream resolvers using opportunistic DNS-over-TLS (falls back to plaintext if TLS is unavailable)
-- **Firewall** -- `nftables` enabled out of the box
 - **ZRAM swap** -- compressed swap in memory via `zram-generator` (zstd, capped at half RAM or 4 GiB)
 - **Kernel hardening** -- sysctl tunables for network firewall hardening (SYN cookies, reverse path filtering, ICMP redirect rejection, source route blocking, broadcast ping rejection, TIME-WAIT protection), watchdog disabled, ZRAM-optimized VM settings
 - **Module blacklisting** -- PC speaker, watchdog timers, and FireWire disabled by default; additional configs for disabling Bluetooth, webcam, microphone, and Thunderbolt are included in the settings directory for manual use
@@ -142,7 +141,6 @@ There is no bootloader. The UEFI firmware loads the UKI directly. Use your firmw
 
 - **sysctl**: TCP SYN cookies, strict reverse path filtering, ICMP redirect rejection, source route blocking, broadcast ping rejection, bogus ICMP error rejection, TIME-WAIT assassination protection (RFC 1337), shared media redirects disabled, NMI watchdog disabled
 - **modprobe**: PC speaker, watchdog timers, and FireWire blacklisted; Intel Wi-Fi power save disabled
-- **nftables**: firewall service enabled
 - **Suspend/hibernate disabled**: sleep-related systemd targets masked (`suspend`, `hibernate`, `hybrid-sleep`, `suspend-then-hibernate`); logind configured to lock on lid close, power off on power key, and ignore suspend/hibernate keys; `systemd-sleep` configured to reject all sleep types
 - **ZRAM**: compressed swap (zstd, half RAM up to 4 GiB)
 - **pacman**: color output, parallel downloads (10)

@@ -823,9 +823,6 @@ zram-size = min(ram / 2, 4 * 1024)
 compression-algorithm = zstd
 EOF
 
-show_info "Enabling nftables firewall"
-systemctl enable nftables.service --root=/mnt &>/dev/null
-
 ####################################################################################################
 # Disable suspend and hibernate
 ####################################################################################################
