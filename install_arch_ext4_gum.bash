@@ -556,7 +556,7 @@ wipefs --all "$root_part" 2> /dev/null
 
 if [ "$encrypt_root" = "yes" ]; then
     show_info "Creating LUKS container for the root partition"
-    echo -n "$userpass" | cryptsetup -c serpent-xts-plain64 -s 512 -h sha512 luksFormat "$root_part" -d - &>/dev/null
+    echo -n "$userpass" | cryptsetup -c aes-xts-plain64 -s 512 -h sha512 luksFormat "$root_part" -d - &>/dev/null
     echo -n "$userpass" | cryptsetup open "$root_part" cryptroot -d -
     DEVICE="/dev/mapper/cryptroot"
 else
@@ -674,13 +674,13 @@ show_info "Configuring IOMMU hardening"
 CPU=$(grep -m1 vendor_id /proc/cpuinfo)
 if [[ "$CPU" == *"AuthenticAMD"* ]]; then
     cat > /mnt/etc/cmdline.d/iommu.conf <<EOF
-# DMA protection: force IOMMU, disable passthrough, strict TLB invalidation
-iommu=force iommu.passthrough=0 iommu.strict=1
+# DMA protection: force IOMMU, disable passthrough
+iommu=force iommu.passthrough=0
 EOF
 else
     cat > /mnt/etc/cmdline.d/iommu.conf <<EOF
-# DMA protection: force IOMMU, disable passthrough, strict TLB invalidation
-iommu=force iommu.passthrough=0 iommu.strict=1 intel_iommu=on
+# DMA protection: force IOMMU, disable passthrough
+iommu=force iommu.passthrough=0 intel_iommu=on
 EOF
 fi
 
