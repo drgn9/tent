@@ -73,9 +73,16 @@ required_paths=(
     /root/tent/settings/sysctl/99-firewall-settings.conf
     /root/tent/settings/sysctl/99-watchdog-settings.conf
     /root/tent/settings/sysctl/99-zram-settings.conf
+    /root/tent/settings/sysctl/99-hardening.conf
     /root/tent/settings/modprobe/blacklist.conf
     /root/tent/settings/modprobe/disable-firewire.conf
     /root/tent/settings/modprobe/iwlwifi.conf
+    /root/tent/settings/modprobe/security-blacklist.conf
+    /root/tent/settings/modprobe/disable-bluetooth.conf
+    /root/tent/settings/modprobe/disable-thunderbolt.conf
+    /root/tent/settings/systemd/disable-coredump-system.conf
+    /root/tent/settings/systemd/disable-coredump-user.conf
+    /root/tent/settings/security/disable-coredump.conf
 )
 
 missing_paths=()
@@ -165,12 +172,29 @@ set_sysctl() {
     cp /root/tent/settings/sysctl/99-firewall-settings.conf /mnt/etc/sysctl.d/99-firewall-settings.conf
     cp /root/tent/settings/sysctl/99-watchdog-settings.conf /mnt/etc/sysctl.d/99-watchdog-settings.conf
     cp /root/tent/settings/sysctl/99-zram-settings.conf /mnt/etc/sysctl.d/99-zram-settings.conf
+    cp /root/tent/settings/sysctl/99-hardening.conf /mnt/etc/sysctl.d/99-hardening.conf
 }
 
 set_modprobe() {
     cp /root/tent/settings/modprobe/blacklist.conf /mnt/etc/modprobe.d/blacklist.conf
     cp /root/tent/settings/modprobe/disable-firewire.conf /mnt/etc/modprobe.d/disable-firewire.conf
     cp /root/tent/settings/modprobe/iwlwifi.conf /mnt/etc/modprobe.d/iwlwifi.conf
+    cp /root/tent/settings/modprobe/security-blacklist.conf /mnt/etc/modprobe.d/security-blacklist.conf
+    if [ "$use_bluetooth" = "no" ]; then
+        cp /root/tent/settings/modprobe/disable-bluetooth.conf /mnt/etc/modprobe.d/disable-bluetooth.conf
+    fi
+    if [ "$use_thunderbolt" = "no" ]; then
+        cp /root/tent/settings/modprobe/disable-thunderbolt.conf /mnt/etc/modprobe.d/disable-thunderbolt.conf
+    fi
+}
+
+set_coredump() {
+    mkdir -p /mnt/etc/systemd/system.conf.d
+    mkdir -p /mnt/etc/systemd/user.conf.d
+    mkdir -p /mnt/etc/security/limits.d
+    cp /root/tent/settings/systemd/disable-coredump-system.conf /mnt/etc/systemd/system.conf.d/60-disable-coredump.conf
+    cp /root/tent/settings/systemd/disable-coredump-user.conf /mnt/etc/systemd/user.conf.d/60-disable-coredump.conf
+    cp /root/tent/settings/security/disable-coredump.conf /mnt/etc/security/limits.d/60-disable-coredump.conf
 }
 
 set_systemd_networkd() {
@@ -317,6 +341,24 @@ else
     show_info "Kernel lockdown: disabled"
 fi
 
+# --- Hardware ---
+gum style --foreground 212 --bold --margin "1 0" "Hardware"
+if gum confirm "Disable bluetooth?"; then
+    use_bluetooth="no"
+    show_info "Bluetooth: disabled"
+else
+    use_bluetooth="yes"
+    show_info "Bluetooth: enabled"
+fi
+
+if gum confirm "Disable thunderbolt?"; then
+    use_thunderbolt="no"
+    show_info "Thunderbolt: disabled"
+else
+    use_thunderbolt="yes"
+    show_info "Thunderbolt: enabled"
+fi
+
 # --- Network ---
 gum style --foreground 212 --bold --margin "1 0" "Network"
 network_selection=$(gum choose --header "Select network configuration:" \
@@ -427,6 +469,8 @@ gum style --border rounded --border-foreground 212 --padding "1 2" --margin "0 2
     "Secure Boot:     $secure_boot" \
     "AppArmor:        $use_apparmor" \
     "Lockdown:        $use_lockdown" \
+    "Bluetooth:       $use_bluetooth" \
+    "Thunderbolt:     $use_thunderbolt" \
     "Network:         $network_selection" \
     "Hostname:        $hostname" \
     "Timezone:        $timezone" \
@@ -595,7 +639,7 @@ fi
 microcode_detector
 
 show_info "Installing the base system (pacstrap) - this may take a while"
-pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite pcsc-tools audit man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic rclone age gocryptfs fuse2 fuse3 vim jq fwupd >/dev/null
+pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite pcsc-tools audit man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic rclone age gocryptfs fuse2 fuse3 vim jq fwupd usbguard >/dev/null
 show_info "Base system installed"
 
 ####################################################################################################
@@ -691,6 +735,22 @@ if [ "$use_lockdown" = "yes" ]; then
 lockdown=integrity
 EOF
 fi
+
+show_info "Configuring kernel hardening arguments"
+cat > /mnt/etc/cmdline.d/hardening.conf <<EOF
+# Memory hardening: zero allocations/frees, randomize page allocator, disable slab merging
+init_on_alloc=1 init_on_free=1 page_alloc.shuffle=1 slab_nomerge randomize_kstack_offset=on
+# CPU vulnerability mitigations
+pti=on spectre_v2=on spec_store_bypass_disable=on l1tf=full,force l1d_flush=on mitigations=auto
+# Disable legacy attack surfaces
+vsyscall=none vdso32=0
+# Kernel pointer and entropy hardening
+hash_pointers=always random.trust_bootloader=off random.trust_cpu=off
+# IOMMU strict TLB invalidation
+iommu.strict=1
+# Disable initramfs debug shell
+rd.shell=0 rd.emergency=halt
+EOF
 
 show_info "Configuring mkinitcpio"
 
@@ -812,6 +872,9 @@ set_sysctl
 
 show_info "Configuring modprobe"
 set_modprobe
+
+show_info "Disabling core dumps"
+set_coredump
 
 show_info "Configuring systemd-resolved"
 set_systemd_resolved
@@ -1012,6 +1075,12 @@ if [ "$encrypt_root" = "yes" ]; then
             ;;
     esac
 fi
+
+show_info "USBGuard is installed but NOT enabled."
+show_info "After first boot, plug in all trusted USB devices, then run:"
+show_info "  sudo usbguard generate-policy > /etc/usbguard/rules.conf"
+show_info "  sudo systemctl enable --now usbguard"
+show_info "Add your username to IPCAllowedUsers in /etc/usbguard/usbguard-daemon.conf for non-root CLI access."
 
 gum style \
     --foreground 82 --border-foreground 82 --border double \
