@@ -1,0 +1,93 @@
+#!/bin/bash
+set -euo pipefail
+
+# harden-suid — Whitelist-based SUID/SGID stripping + capability application.
+# Called by pacman hooks after package installs/upgrades.
+#
+# Design: Inspired by secureblue's removesuid.sh
+# https://github.com/secureblue/secureblue/blob/live/files/scripts/removesuid.sh
+#
+# Approach: Strip ALL SUID/SGID bits found under /usr and /opt, EXCEPT for
+# a small whitelist. Then apply fine-grained Linux capabilities where needed.
+# This is safer than a blocklist because new SUID binaries from future
+# package installs are automatically caught.
+
+# ── Whitelist ────────────────────────────────────────────────
+# These are the ONLY binaries allowed to keep SUID/SGID bits.
+# Everything else gets stripped.
+
+SUID_WHITELIST=(
+    # D-Bus system bus activation (essential, restricted perms already)
+    /usr/lib/dbus-daemon-launch-helper
+)
+
+SGID_WHITELIST=(
+    # systemd shutdown notices
+    /usr/bin/wall
+    # Terminal session recording
+    /usr/lib/utempter/utempter
+)
+
+# ── Capabilities ─────────────────────────────────────────────
+# Binaries that need limited elevated privileges get capabilities
+# instead of SUID. Format: "capabilities|path"
+
+CAPS_TO_SET=(
+    # PAM password verification (polkit agent, screen locker, etc.)
+    # Needs: read /etc/shadow + write audit log
+    "cap_dac_read_search,cap_audit_write=ep|/usr/bin/unix_chkpwd"
+
+    # FUSE3 user mounts (gocryptfs, rclone, ntfs3g, etc.)
+    "cap_sys_admin=ep|/usr/bin/fusermount3"
+
+    # FUSE2 user mounts (legacy — AppImages, older FUSE tools)
+    "cap_sys_admin=ep|/usr/bin/fusermount"
+
+    # Password aging info (read-only access for unprivileged users)
+    "cap_dac_read_search,cap_audit_write=ep|/usr/bin/chage"
+)
+
+# ── Helper ───────────────────────────────────────────────────
+
+is_whitelisted() {
+    local binary="$1"
+    shift
+    local whitelist=("$@")
+    for allowed in "${whitelist[@]}"; do
+        if [[ "$binary" == "$allowed" ]]; then
+            return 0
+        fi
+    done
+    return 1
+}
+
+# ── Strip SUID bits ──────────────────────────────────────────
+
+find /usr /opt -type f -perm -4000 2>/dev/null |
+    while IFS= read -r binary; do
+        if ! is_whitelisted "$binary" "${SUID_WHITELIST[@]}"; then
+            chmod u-s "$binary"
+            echo "  Stripped SUID from $binary"
+        fi
+    done
+
+# ── Strip SGID bits ──────────────────────────────────────────
+
+find /usr /opt -type f -perm -2000 2>/dev/null |
+    while IFS= read -r binary; do
+        if ! is_whitelisted "$binary" "${SGID_WHITELIST[@]}"; then
+            chmod g-s "$binary"
+            echo "  Stripped SGID from $binary"
+        fi
+    done
+
+# ── Apply capabilities ───────────────────────────────────────
+
+for entry in "${CAPS_TO_SET[@]}"; do
+    caps="${entry%%|*}"
+    path="${entry##*|}"
+    if [[ -f "$path" ]]; then
+        setcap "$caps" "$path"
+        echo "  Set $caps on $path"
+    fi
+done

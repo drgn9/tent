@@ -83,6 +83,12 @@ required_paths=(
     /root/tent/settings/systemd/disable-coredump-system.conf
     /root/tent/settings/systemd/disable-coredump-user.conf
     /root/tent/settings/security/disable-coredump.conf
+    /root/tent/settings/polkit/00-udisks-wheel.rules
+    /root/tent/settings/run0/sudo-wrapper
+    /root/tent/settings/run0/90-run0.rules
+    /root/tent/settings/run0/polkitd.conf
+    /root/tent/settings/run0/harden-suid
+    /root/tent/settings/run0/99-harden-suid.hook
 )
 
 missing_paths=()
@@ -195,6 +201,45 @@ set_coredump() {
     cp /root/tent/settings/systemd/disable-coredump-system.conf /mnt/etc/systemd/system.conf.d/60-disable-coredump.conf
     cp /root/tent/settings/systemd/disable-coredump-user.conf /mnt/etc/systemd/user.conf.d/60-disable-coredump.conf
     cp /root/tent/settings/security/disable-coredump.conf /mnt/etc/security/limits.d/60-disable-coredump.conf
+}
+
+set_run0() {
+    # Deploy sudo wrapper (intercepts all sudo calls, redirects to run0)
+    cp /root/tent/settings/run0/sudo-wrapper /mnt/usr/local/bin/sudo
+    chmod 755 /mnt/usr/local/bin/sudo
+    chown root:root /mnt/usr/local/bin/sudo
+
+    # Deploy polkit rules (wheel group auth with 5-minute caching)
+    mkdir -p /mnt/etc/polkit-1/rules.d
+    cp /root/tent/settings/run0/90-run0.rules /mnt/etc/polkit-1/rules.d/90-run0.rules
+
+    # Deploy polkit cache timeout config
+    cp /root/tent/settings/run0/polkitd.conf /mnt/etc/polkit-1/polkitd.conf
+
+    # Deploy SUID hardening script
+    cp /root/tent/settings/run0/harden-suid /mnt/usr/local/bin/harden-suid
+    chmod 755 /mnt/usr/local/bin/harden-suid
+    chown root:root /mnt/usr/local/bin/harden-suid
+
+    # Deploy pacman hook (runs harden-suid after every package install/upgrade)
+    mkdir -p /mnt/etc/pacman.d/hooks
+    cp /root/tent/settings/run0/99-harden-suid.hook /mnt/etc/pacman.d/hooks/99-harden-suid.hook
+
+    # Add PACMAN_AUTH and alias to user's .bashrc
+    cat >> /mnt/home/"$username"/.bashrc <<'BASHRC'
+
+# run0 as privilege escalation tool
+export PACMAN_AUTH="run0"
+alias sudo='run0'
+BASHRC
+
+    # Lock down sudoers — remove wheel group access
+    echo "# sudoers locked — using run0 for privilege escalation" > /mnt/etc/sudoers.d/wheel
+    arch-chroot /mnt chmod 0440 /etc/sudoers.d/wheel
+
+    # Run the initial SUID/SGID stripping + capability application
+    show_info "Stripping SUID/SGID bits and applying capabilities"
+    arch-chroot /mnt /usr/local/bin/harden-suid
 }
 
 set_systemd_networkd() {
@@ -359,6 +404,16 @@ else
     show_info "Thunderbolt: enabled"
 fi
 
+# --- run0 (sudo replacement) ---
+gum style --foreground 212 --bold --margin "1 0" "Privilege Escalation"
+if gum confirm "Replace sudo with run0? (SUID hardening + polkit auth)"; then
+    use_run0="yes"
+    show_info "Privilege escalation: run0 (sudo replaced, SUID hardened)"
+else
+    use_run0="no"
+    show_info "Privilege escalation: sudo (default)"
+fi
+
 # --- Network ---
 gum style --foreground 212 --bold --margin "1 0" "Network"
 network_selection=$(gum choose --header "Select network configuration:" \
@@ -471,6 +526,7 @@ gum style --border rounded --border-foreground 212 --padding "1 2" --margin "0 2
     "Lockdown:        $use_lockdown" \
     "Bluetooth:       $use_bluetooth" \
     "Thunderbolt:     $use_thunderbolt" \
+    "run0 (sudo):     $use_run0" \
     "Network:         $network_selection" \
     "Hostname:        $hostname" \
     "Timezone:        $timezone" \
@@ -938,6 +994,13 @@ EOF
 show_info "Enabling systemd-timesyncd"
 systemctl enable systemd-timesyncd --root=/mnt &>/dev/null
 
+show_info "Enabling polkit"
+systemctl enable polkit.service --root=/mnt &>/dev/null
+
+show_info "Deploying polkit rules"
+mkdir -p /mnt/etc/polkit-1/rules.d
+cp /root/tent/settings/polkit/00-udisks-wheel.rules /mnt/etc/polkit-1/rules.d/00-udisks-wheel.rules
+
 ####################################################################################################
 # Add user
 ####################################################################################################
@@ -970,6 +1033,15 @@ arch-chroot /mnt runuser -u "$username" -- bash -c '
 rm /mnt/etc/sudoers.d/wheel
 echo "%wheel ALL=(ALL:ALL) ALL" > /mnt/etc/sudoers.d/wheel
 arch-chroot /mnt chmod 0440 /etc/sudoers.d/wheel
+
+####################################################################################################
+# run0 hardening (replace sudo, strip SUID/SGID, apply capabilities)
+####################################################################################################
+
+if [ "$use_run0" = "yes" ]; then
+    show_info "Configuring run0 as sudo replacement"
+    set_run0
+fi
 
 ####################################################################################################
 # Restic configuration
@@ -1081,6 +1153,14 @@ show_info "After first boot, plug in all trusted USB devices, then run:"
 show_info "  sudo usbguard generate-policy > /etc/usbguard/rules.conf"
 show_info "  sudo systemctl enable --now usbguard"
 show_info "Add your username to IPCAllowedUsers in /etc/usbguard/usbguard-daemon.conf for non-root CLI access."
+
+if [ "$use_run0" = "yes" ]; then
+    echo ""
+    show_info "run0 is active. sudo calls are transparently redirected to run0."
+    show_info "SUID/SGID bits have been stripped (whitelist model). Capabilities applied."
+    show_info "The pacman hook /etc/pacman.d/hooks/99-harden-suid.hook maintains this state."
+    show_info "To whitelist a new SUID binary: edit /usr/local/bin/harden-suid"
+fi
 
 gum style \
     --foreground 82 --border-foreground 82 --border double \
