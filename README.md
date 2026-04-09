@@ -1,27 +1,34 @@
 # Arch Linux Installer (ext4)
 
-An interactive, security-focused Arch Linux installation script with a terminal UI powered by [gum](https://github.com/charmbracelet/gum). It installs a minimal, hardened Arch system on an ext4 root filesystem with Unified Kernel Images (UKI) booted directly via EFISTUB -- no bootloader required.
+An interactive, security-focused Arch Linux installation script with a terminal UI powered by [gum](https://github.com/charmbracelet/gum). It installs a hardened Arch system with a desktop environment on an ext4 root filesystem with Unified Kernel Images (UKI) booted directly via EFISTUB -- no bootloader required.
 
 ## Features
 
 - **Interactive TUI** -- guided prompts for every decision; no config files to edit beforehand
-- **LUKS encryption** -- optional full-disk encryption using `serpent-xts-plain64` (512-bit key, SHA-512), a cipher chosen for its high security margin
+- **Desktop environment** -- choose between Niri (tiling Wayland compositor) or GNOME; packages are managed via external `.conf` files for easy customization
+- **LUKS encryption** -- optional full-disk encryption using `aes-xts-plain64` (512-bit key, SHA-512)
 - **TPM2 + PIN unlock** -- optional automatic unlock sealed to the TPM2 chip with a PIN and a recovery key
 - **FIDO2 + PIN unlock** -- optional LUKS unlock with a FIDO2 security key (e.g., YubiKey) and a PIN, with optional backup key enrollment and a recovery key
 - **Secure Boot** -- optional enrollment of custom Secure Boot keys via `sbctl`, with automatic UKI and fwupd EFI binary signing
 - **Kernel lockdown** -- optional `lockdown=integrity` mode, preventing modification of the running kernel (unsigned module loading, `/dev/mem` writes, kexec, etc.)
 - **AppArmor** -- optional mandatory access control with audit logging
+- **run0 (sudo replacement)** -- optional replacement of `sudo` with `run0` via polkit, including SUID/SGID bit stripping, capability-based whitelisting, and a pacman hook to maintain hardening across package updates
+- **Hardware toggles** -- interactive prompts to disable Bluetooth and Thunderbolt via modprobe blacklists
+- **USBGuard** -- installed but not enabled; configure after first boot to whitelist trusted USB devices
 - **IOMMU / DMA protection** -- forced IOMMU with strict TLB invalidation and passthrough disabled via kernel cmdline (CPU-specific: `intel_iommu=on` on Intel)
 - **Suspend and hibernate disabled** -- sleep-related systemd targets masked, logind configured to ignore sleep events, systemd-sleep disabled
 - **Unified Kernel Images** -- both `linux` and `linux-lts` kernels are built as UKIs and booted directly from the EFI System Partition via EFISTUB (no GRUB, no systemd-boot)
 - **Firmware updates** -- `fwupd` installed for UEFI and device firmware updates via the Linux Vendor Firmware Service (LVFS)
 - **Network choice** -- choose between `iwd + systemd-networkd`, `systemd-networkd` only, or `NetworkManager`
 - **DNS over TLS** -- preconfigured `systemd-resolved` with Quad9 and Cloudflare upstream resolvers using opportunistic DNS-over-TLS (falls back to plaintext if TLS is unavailable)
+- **Tailscale** -- installed and enabled; operator set via post-install instructions
 - **ZRAM swap** -- compressed swap in memory via `zram-generator` (zstd, capped at half RAM or 4 GiB)
 - **Kernel hardening** -- sysctl tunables for network firewall hardening (SYN cookies, reverse path filtering, ICMP redirect rejection, source route blocking, broadcast ping rejection, TIME-WAIT protection), watchdog disabled, ZRAM-optimized VM settings
+- **Core dump disabled** -- disabled at the systemd system, user, and security limits levels
 - **Module blacklisting** -- PC speaker, watchdog timers, and FireWire disabled by default; additional configs for disabling Bluetooth, webcam, microphone, and Thunderbolt are included in the settings directory for manual use
-- **AUR helper** -- `paru` installed automatically
-- **Root account locked** -- root login is disabled; administration is done through `sudo` via the `wheel` group
+- **AUR helper** -- `paru` installed automatically; AUR packages (`yay-bin`, `brave-bin`, `kvkonqi`) installed from `packages/desktop-aur.conf`
+- **Root account locked** -- root login is disabled; administration is done through `sudo` (or `run0` if selected) via the `wheel` group
+- **External package lists** -- all packages are defined in plain-text `.conf` files under `packages/`, making it easy to customize without editing the main script
 
 ## Requirements
 
@@ -36,11 +43,11 @@ Boot the [Arch Linux installation media](https://archlinux.org/download/), conne
 
 ```bash
 pacman -Sy --noconfirm git
-git clone https://github.com/drgn9/tent.git /root/install-arch
-bash /root/install-arch/install_arch_ext4_gum.bash
+git clone https://github.com/drgn9/tent.git
+bash tent/install_arch_ext4_gum.bash
 ```
 
-The script must be cloned to `/root/install-arch` -- this is the path it expects for the bundled settings files.
+The script auto-detects its own location, so it can be cloned to any directory.
 
 ## Walkthrough
 
@@ -48,7 +55,7 @@ The installer guides you through each step interactively. Here is the full seque
 
 ### 1. Pre-flight checks
 
-The script verifies it is running as root, the system is booted in UEFI mode, and all required settings files are present. It then installs its own dependencies (`gum`, `reflector`, `cryptsetup`, `efibootmgr`) if they are missing.
+The script verifies it is running as root, the system is booted in UEFI mode, and all required settings and package files are present. It then installs its own dependencies (`gum`, `reflector`, `cryptsetup`, `efibootmgr`) if they are missing.
 
 ### 2. Configuration prompts
 
@@ -62,6 +69,10 @@ You are asked to configure the following, in order:
 | Secure Boot | yes / no | Requires Setup Mode (script checks and exits with instructions if not) |
 | AppArmor | yes / no | Installs and enables AppArmor + audit |
 | Kernel lockdown | yes / no | Enables `lockdown=integrity` via kernel cmdline |
+| Disable Bluetooth | yes / no | Blacklists Bluetooth modules via modprobe |
+| Disable Thunderbolt | yes / no | Blacklists Thunderbolt modules via modprobe |
+| run0 (sudo replacement) | yes / no | Replaces sudo with run0, strips SUID/SGID bits, applies capabilities |
+| Desktop | Niri / GNOME | Selects the desktop environment to install |
 | Network stack | iwd + systemd-networkd / systemd-networkd only / NetworkManager | |
 | Hostname | free text | Validated against RFC 1123 |
 | Timezone | region / city picker | Searchable list from `/usr/share/zoneinfo` |
@@ -101,13 +112,36 @@ The script validates that all selected partitions are distinct.
 
 - `base`, `base-devel`, `linux`, `linux-lts` (with headers and firmware)
 - CPU microcode (auto-detected: `amd-ucode` or `intel-ucode`)
-- Security tools: `cryptsetup`, `nftables`, `openssh`, `tpm2-tools`, `libfido2`, `pam-u2f`, `pcsclite`, `pcsc-tools`, `audit`, `efitools`, `fwupd`
+- Security tools: `cryptsetup`, `nftables`, `openssh`, `tpm2-tools`, `libfido2`, `pam-u2f`, `pcsclite`, `pcsc-tools`, `audit`, `efitools`, `fwupd`, `usbguard`
 - System utilities: `reflector`, `zram-generator`, `sudo`, `bash-completion`, `man-db`, `dosfstools`, `efibootmgr`
 - User tools: `curl`, `wget`, `git`, `rsync`, `stow`, `restic`, `rclone`, `age`, `gocryptfs`, `fuse2`, `fuse3`, `vim`, `jq`
 
 Note: `openssh` is installed but the `sshd` service is **not** enabled. Enable it manually after installation if needed.
 
-### 7. System configuration
+### 7. Desktop packages
+
+The script installs desktop packages from external `.conf` files via `pacman -S --needed --noconfirm -` (reading package names from stdin). This is done inside `arch-chroot` after the base system is in place.
+
+**Always installed:**
+
+- **Base CLI tools** (`packages/base.conf`): 33 packages including tmux, btop, fastfetch, rsync, rclone, restic, etc.
+- **Tailscale**: installed and `tailscaled.service` enabled
+- **Desktop common** (`packages/desktop-base.conf`): 55 packages including mesa, PipeWire audio stack, fonts, yubikey tools, bitwarden, keepassxc, alacritty, libreoffice, android tools, etc.
+- **GPU drivers**: auto-detected via `lspci` -- Intel (`packages/desktop-driver-intel.conf`) or AMD (`packages/desktop-driver-amd.conf`)
+
+**Toggled manually** (change `if false` to `if true` in the script):
+
+- **Dev tools** (`packages/base-dev.conf`): neovim, lazygit, fzf, ripgrep, bat, starship, etc.
+- **Docker** (`packages/base-docker.conf`): docker, docker-buildx, docker-compose
+
+**Based on desktop choice:**
+
+- **Niri** (`packages/desktop-niri.conf`): niri, swaylock, swayidle, waybar, fuzzel, mako, Qt/Kvantum theming, xdg-desktop-portal-gtk, xwayland-satellite
+- **GNOME** (`packages/desktop-gnome.conf`): gnome-shell, gnome-control-center, GDM, nautilus, evince, CUPS printing
+
+For Niri, the script also patches `niri-portals.conf` to use the GTK file chooser portal.
+
+### 8. System configuration
 
 The script configures:
 
@@ -126,7 +160,7 @@ The script configures:
 - AppArmor kernel parameters and parser optimizations (if enabled)
 - Timezone, hardware clock, and locale generation (inside `arch-chroot`)
 
-### 8. Boot entries
+### 9. Boot entries
 
 The script uses `efibootmgr` to manage UEFI boot entries:
 
@@ -137,26 +171,39 @@ The script uses `efibootmgr` to manage UEFI boot entries:
 
 There is no bootloader. The UEFI firmware loads the UKI directly. Use your firmware's boot menu to switch between kernels.
 
-### 9. Hardening
+### 10. Hardening
 
 - **sysctl**: TCP SYN cookies, strict reverse path filtering, ICMP redirect rejection, source route blocking, broadcast ping rejection, bogus ICMP error rejection, TIME-WAIT assassination protection (RFC 1337), shared media redirects disabled, NMI watchdog disabled
-- **modprobe**: PC speaker, watchdog timers, and FireWire blacklisted; Intel Wi-Fi power save disabled
+- **modprobe**: PC speaker, watchdog timers, and FireWire blacklisted; Intel Wi-Fi power save disabled; optionally Bluetooth and Thunderbolt disabled (based on prompts)
+- **Core dumps disabled**: at the systemd system level, user level, and security limits level
 - **Suspend/hibernate disabled**: sleep-related systemd targets masked (`suspend`, `hibernate`, `hybrid-sleep`, `suspend-then-hibernate`); logind configured to lock on lid close, power off on power key, and ignore suspend/hibernate keys; `systemd-sleep` configured to reject all sleep types
 - **ZRAM**: compressed swap (zstd, half RAM up to 4 GiB)
 - **pacman**: color output, parallel downloads (10)
 - **reflector**: configured for your selected country (HTTPS, top 5 mirrors). Run `reflector` manually or enable `reflector.timer` to auto-update the mirrorlist.
 
-### 10. User account and AUR helper
+### 11. User account, AUR helper, and desktop AUR packages
 
 - A user account is created in the `wheel` group
 - `paru` (AUR helper) is installed from the AUR
-- Temporary `NOPASSWD` sudo is used only during `paru` installation, then replaced with standard password-required sudo: `%wheel ALL=(ALL:ALL) ALL`
+- AUR packages from `packages/desktop-aur.conf` are installed (`yay-bin`, `brave-bin`, `kvkonqi`)
+- Temporary `NOPASSWD` sudo is used only during `paru` and AUR package installation, then replaced with standard password-required sudo: `%wheel ALL=(ALL:ALL) ALL`
 
-### 11. Root account lockdown
+### 12. run0 hardening (if enabled)
 
-The root account is locked (`passwd -l root`). All administration is done via `sudo`.
+If you opted to replace sudo with run0:
 
-### 12. LUKS key enrollment (if TPM2 or FIDO2 is enabled)
+- A `sudo` wrapper script is deployed to `/usr/local/bin/sudo` that transparently redirects all sudo calls to `run0`
+- Polkit rules grant `wheel` group members authentication with a 5-minute cache timeout
+- SUID/SGID bits are stripped from all binaries (whitelist model), and capabilities are applied where needed
+- A pacman hook (`99-harden-suid.hook`) automatically re-runs the hardening after every package install/upgrade
+- The `PACMAN_AUTH` environment variable and `sudo` alias are added to the user's `.bashrc`
+- The sudoers file is locked to prevent direct sudo access
+
+### 13. Root account lockdown
+
+The root account is locked (`passwd -l root`). All administration is done via `sudo` (or `run0` if selected).
+
+### 14. LUKS key enrollment (if TPM2 or FIDO2 is enabled)
 
 #### TPM2 + PIN
 
@@ -178,7 +225,7 @@ At boot, `sd-encrypt` tries to detect a FIDO2 device. If found, it prompts for t
 
 Either the primary or backup FIDO2 key will work at the boot prompt -- they are independent LUKS keyslots.
 
-### 13. Secure Boot (if enabled)
+### 15. Secure Boot (if enabled)
 
 If you opted for Secure Boot:
 
@@ -285,48 +332,71 @@ sudo sbctl sign-all
 ## Repository Structure
 
 ```
-install-arch/
-├── install_arch_ext4_gum.bash          # Main installer script (interactive, with gum TUI)
+tent/
+├── install_arch_ext4_gum.bash          # Main installer script
 ├── README.md
-├── archive/
-│   └── install_arch_ext4.bash          # Alternate installer (without gum, archived)
+├── packages/                           # Package lists (one package per line)
+│   ├── base.conf                       # Base CLI tools (33 packages)
+│   ├── base-dev.conf                   # Dev tools (toggle manually, 29 packages)
+│   ├── base-docker.conf                # Docker (toggle manually, 3 packages)
+│   ├── desktop-base.conf               # Desktop common: mesa, sound, fonts, android (55 packages)
+│   ├── desktop-driver-intel.conf       # Intel GPU drivers (auto-detected)
+│   ├── desktop-driver-amd.conf         # AMD GPU drivers (auto-detected)
+│   ├── desktop-niri.conf               # Niri WM + Qt/Kvantum theming (22 packages)
+│   ├── desktop-gnome.conf              # GNOME + apps + printing (19 packages)
+│   └── desktop-aur.conf                # AUR packages: yay-bin, brave-bin, kvkonqi
 └── settings/
     ├── modprobe/
     │   ├── blacklist.conf              # Blacklists: PC speaker, watchdog timers
-    │   ├── disable-bluetooth.conf      # Optional: disable Bluetooth
+    │   ├── disable-bluetooth.conf      # Disable Bluetooth (applied if selected)
     │   ├── disable-firewire.conf       # Disable FireWire (applied by default)
-    │   ├── disable-microphone.conf     # Optional: disable microphone
-    │   ├── disable-thunderbolt.conf    # Optional: disable Thunderbolt
-    │   ├── disable-webcam.conf         # Optional: disable webcam
-    │   └── iwlwifi.conf                # Intel Wi-Fi: power save off, 40MHz disabled on 2.4GHz
+    │   ├── disable-microphone.conf     # Optional: disable microphone (manual)
+    │   ├── disable-thunderbolt.conf    # Disable Thunderbolt (applied if selected)
+    │   ├── disable-webcam.conf         # Optional: disable webcam (manual)
+    │   ├── iwlwifi.conf                # Intel Wi-Fi: power save off
+    │   └── security-blacklist.conf     # Security-related module blacklists
     ├── network/
     │   ├── 20-wired.network            # systemd-networkd: wired DHCP
     │   ├── 25-wireless.network         # systemd-networkd: wireless DHCP
     │   ├── iwd.main.conf               # iwd: MAC randomization, roaming thresholds
     │   ├── iwd.override.conf           # iwd: 2-second start delay for hardware readiness
     │   ├── NetworkManager.conf         # NetworkManager: use systemd-resolved for DNS
-    │   ├── resolved.conf               # systemd-resolved: Quad9 + Cloudflare, opportunistic DoT, no mDNS/LLMNR
+    │   ├── resolved.conf               # systemd-resolved: Quad9 + Cloudflare, opportunistic DoT
     │   └── wait-for-only-one-interface.conf  # Wait for any single interface (faster boot)
-    └── sysctl/
-        ├── 99-firewall-settings.conf   # Network hardening: SYN cookies, RP filter, no redirects, no source routes, broadcast ping rejection, TIME-WAIT protection
-        ├── 99-watchdog-settings.conf   # Disable NMI watchdog
-        └── 99-zram-settings.conf       # VM tuning for ZRAM: swappiness 180, page-cluster 0
+    ├── polkit/
+    │   └── 00-udisks-wheel.rules       # Allow wheel group to manage disks via udisks2
+    ├── run0/
+    │   ├── 90-run0.rules               # Polkit rules for run0 wheel group auth
+    │   ├── 99-harden-suid.hook         # Pacman hook to re-run SUID hardening after updates
+    │   ├── harden-suid                 # Script to strip SUID/SGID bits and apply capabilities
+    │   ├── polkitd.conf                # Polkit daemon config with cache timeout
+    │   └── sudo-wrapper                # Wrapper that redirects sudo calls to run0
+    ├── security/
+    │   └── disable-coredump.conf       # Disable core dumps via security limits
+    ├── sysctl/
+    │   ├── 99-firewall-settings.conf   # Network hardening: SYN cookies, RP filter, no redirects
+    │   ├── 99-hardening.conf           # Additional kernel hardening settings
+    │   ├── 99-watchdog-settings.conf   # Disable NMI watchdog
+    │   └── 99-zram-settings.conf       # VM tuning for ZRAM: swappiness 180, page-cluster 0
+    └── systemd/
+        ├── disable-coredump-system.conf  # Disable core dumps at system level
+        └── disable-coredump-user.conf    # Disable core dumps at user level
 ```
 
 ### Optional modprobe configs
 
 The `settings/modprobe/` directory contains additional configs that are **not** applied by default but are available for manual use:
 
-- `disable-bluetooth.conf` -- disable Bluetooth entirely
 - `disable-microphone.conf` -- disable the audio input device
-- `disable-thunderbolt.conf` -- disable Thunderbolt/USB4
 - `disable-webcam.conf` -- disable the USB video class driver
 
 To use any of these after installation, copy them to `/etc/modprobe.d/` and reboot:
 
 ```bash
-sudo cp disable-bluetooth.conf /etc/modprobe.d/
+sudo cp disable-microphone.conf /etc/modprobe.d/
 ```
+
+Note: `disable-bluetooth.conf` and `disable-thunderbolt.conf` are applied automatically if you select those options during installation.
 
 ## Partition Layout
 
@@ -344,8 +414,7 @@ The EFI partition is sized at 1 GiB to accommodate two UKIs (each ~100-150 MiB) 
 
 When LUKS encryption is enabled:
 
-- **Cipher**: `serpent-xts-plain64` with a 512-bit key (256-bit effective with XTS) and SHA-512 key derivation
-- **Why Serpent**: Serpent was an AES finalist with a more conservative design (32 rounds vs AES's 14). It has a higher security margin than AES at the cost of throughput. It does not benefit from hardware acceleration (AES-NI). This is an intentional trade-off favoring security over raw I/O speed.
+- **Cipher**: `aes-xts-plain64` with a 512-bit key (256-bit effective with XTS) and SHA-512 key derivation
 - **systemd-based unlock**: uses `sd-encrypt` in the initramfs with `crypttab.initramfs`
 - **TPM2 binding** (optional): the unlock key is sealed to the TPM2 chip, requiring a PIN to unseal. A recovery key is also enrolled for emergencies.
 - **FIDO2 binding** (optional): the unlock key is tied to a FIDO2 security key with a client PIN (Ed25519 credential). A backup FIDO2 key and a recovery key can also be enrolled. If no FIDO2 device is present at boot, `sd-encrypt` falls back to a passphrase prompt after a 30-second timeout.
@@ -364,11 +433,52 @@ After the script completes:
 
 ### First steps after reboot
 
+Run the post-install commands printed at the end of installation:
+
+```bash
+# Set yourself as the Tailscale operator
+sudo tailscale set --operator=$USER
+
+# Enable the SSH agent
+systemctl --user enable --now ssh-agent.socket
+```
+
+If you installed **Niri**, also run:
+
+```bash
+# Set dark mode
+dconf write /org/gnome/desktop/interface/color-scheme "'prefer-dark'"
+
+# Configure GTK and icon themes
+nwg-look
+
+# Configure Qt theme
+kvantummanager
+```
+
+Additional first steps:
+
 - Connect to Wi-Fi (if using iwd): `iwctl station wlan0 connect <SSID>`
 - Connect to Wi-Fi (if using NetworkManager): `nmtui`
+- Connect to Tailscale: `tailscale up`
 - Check firmware security posture: `fwupdmgr security`
-- Install a desktop environment, window manager, or any additional packages via `paru`
+- Configure USBGuard: plug in all trusted USB devices, then run:
+  ```bash
+  sudo usbguard generate-policy > /etc/usbguard/rules.conf
+  sudo systemctl enable --now usbguard
+  ```
+  Add your username to `IPCAllowedUsers` in `/etc/usbguard/usbguard-daemon.conf` for non-root CLI access.
 - Review and customize sysctl, modprobe, and network configs in `/etc/`
+
+## Customizing Packages
+
+All packages are defined in plain-text files under `packages/`. Each file contains one package name per line. To customize:
+
+- **Add a package**: append its name to the appropriate `.conf` file
+- **Remove a package**: delete its line from the `.conf` file
+- **Enable dev/docker packages**: change `if false` to `if true` in `desktop_base_installer()` in the main script
+
+No other changes to the main script are needed.
 
 ## Error Handling
 

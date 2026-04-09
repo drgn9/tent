@@ -4,6 +4,8 @@ clear
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 if [[ ${EUID:-0} -ne 0 ]]; then
     echo "ERROR: This script must be run as root."
     exit 1
@@ -62,33 +64,46 @@ show_warn() {
     gum log --level warn "$1"
 }
 
+install_packages() {
+    arch-chroot /mnt pacman -S --needed --noconfirm - < "$1" >/dev/null
+}
+
 required_paths=(
-    /root/tent/settings/network/NetworkManager.conf
-    /root/tent/settings/network/20-wired.network
-    /root/tent/settings/network/wait-for-only-one-interface.conf
-    /root/tent/settings/network/25-wireless.network
-    /root/tent/settings/network/iwd.main.conf
-    /root/tent/settings/network/iwd.override.conf
-    /root/tent/settings/network/resolved.conf
-    /root/tent/settings/sysctl/99-firewall-settings.conf
-    /root/tent/settings/sysctl/99-watchdog-settings.conf
-    /root/tent/settings/sysctl/99-zram-settings.conf
-    /root/tent/settings/sysctl/99-hardening.conf
-    /root/tent/settings/modprobe/blacklist.conf
-    /root/tent/settings/modprobe/disable-firewire.conf
-    /root/tent/settings/modprobe/iwlwifi.conf
-    /root/tent/settings/modprobe/security-blacklist.conf
-    /root/tent/settings/modprobe/disable-bluetooth.conf
-    /root/tent/settings/modprobe/disable-thunderbolt.conf
-    /root/tent/settings/systemd/disable-coredump-system.conf
-    /root/tent/settings/systemd/disable-coredump-user.conf
-    /root/tent/settings/security/disable-coredump.conf
-    /root/tent/settings/polkit/00-udisks-wheel.rules
-    /root/tent/settings/run0/sudo-wrapper
-    /root/tent/settings/run0/90-run0.rules
-    /root/tent/settings/run0/polkitd.conf
-    /root/tent/settings/run0/harden-suid
-    /root/tent/settings/run0/99-harden-suid.hook
+    "${SCRIPT_DIR}"/settings/network/NetworkManager.conf
+    "${SCRIPT_DIR}"/settings/network/20-wired.network
+    "${SCRIPT_DIR}"/settings/network/wait-for-only-one-interface.conf
+    "${SCRIPT_DIR}"/settings/network/25-wireless.network
+    "${SCRIPT_DIR}"/settings/network/iwd.main.conf
+    "${SCRIPT_DIR}"/settings/network/iwd.override.conf
+    "${SCRIPT_DIR}"/settings/network/resolved.conf
+    "${SCRIPT_DIR}"/settings/sysctl/99-firewall-settings.conf
+    "${SCRIPT_DIR}"/settings/sysctl/99-watchdog-settings.conf
+    "${SCRIPT_DIR}"/settings/sysctl/99-zram-settings.conf
+    "${SCRIPT_DIR}"/settings/sysctl/99-hardening.conf
+    "${SCRIPT_DIR}"/settings/modprobe/blacklist.conf
+    "${SCRIPT_DIR}"/settings/modprobe/disable-firewire.conf
+    "${SCRIPT_DIR}"/settings/modprobe/iwlwifi.conf
+    "${SCRIPT_DIR}"/settings/modprobe/security-blacklist.conf
+    "${SCRIPT_DIR}"/settings/modprobe/disable-bluetooth.conf
+    "${SCRIPT_DIR}"/settings/modprobe/disable-thunderbolt.conf
+    "${SCRIPT_DIR}"/settings/systemd/disable-coredump-system.conf
+    "${SCRIPT_DIR}"/settings/systemd/disable-coredump-user.conf
+    "${SCRIPT_DIR}"/settings/security/disable-coredump.conf
+    "${SCRIPT_DIR}"/settings/polkit/00-udisks-wheel.rules
+    "${SCRIPT_DIR}"/settings/run0/sudo-wrapper
+    "${SCRIPT_DIR}"/settings/run0/90-run0.rules
+    "${SCRIPT_DIR}"/settings/run0/polkitd.conf
+    "${SCRIPT_DIR}"/settings/run0/harden-suid
+    "${SCRIPT_DIR}"/settings/run0/99-harden-suid.hook
+    "${SCRIPT_DIR}"/packages/base.conf
+    "${SCRIPT_DIR}"/packages/base-dev.conf
+    "${SCRIPT_DIR}"/packages/base-docker.conf
+    "${SCRIPT_DIR}"/packages/desktop-base.conf
+    "${SCRIPT_DIR}"/packages/desktop-driver-intel.conf
+    "${SCRIPT_DIR}"/packages/desktop-driver-amd.conf
+    "${SCRIPT_DIR}"/packages/desktop-niri.conf
+    "${SCRIPT_DIR}"/packages/desktop-gnome.conf
+    "${SCRIPT_DIR}"/packages/desktop-aur.conf
 )
 
 missing_paths=()
@@ -143,7 +158,7 @@ network_installer() {
     case $network_choice in
         1)
             show_info "Enabling systemd-networkd, installing and enabling iwd"
-            pacstrap /mnt iwd >/dev/null
+            pacstrap /mnt iwd impala >/dev/null
             systemctl enable systemd-networkd.service --root=/mnt &>/dev/null
             systemctl enable iwd.service --root=/mnt &>/dev/null
             set_systemd_networkd
@@ -157,7 +172,7 @@ network_installer() {
         3)
             show_info "Installing and enabling NetworkManager"
             pacstrap /mnt networkmanager network-manager-applet nm-connection-editor >/dev/null
-            cp /root/tent/settings/network/NetworkManager.conf /mnt/etc/NetworkManager/NetworkManager.conf
+            cp "${SCRIPT_DIR}"/settings/network/NetworkManager.conf /mnt/etc/NetworkManager/NetworkManager.conf
             systemctl enable NetworkManager.service --root=/mnt &>/dev/null
             ;;
     esac
@@ -175,22 +190,22 @@ microcode_detector() {
 }
 
 set_sysctl() {
-    cp /root/tent/settings/sysctl/99-firewall-settings.conf /mnt/etc/sysctl.d/99-firewall-settings.conf
-    cp /root/tent/settings/sysctl/99-watchdog-settings.conf /mnt/etc/sysctl.d/99-watchdog-settings.conf
-    cp /root/tent/settings/sysctl/99-zram-settings.conf /mnt/etc/sysctl.d/99-zram-settings.conf
-    cp /root/tent/settings/sysctl/99-hardening.conf /mnt/etc/sysctl.d/99-hardening.conf
+    cp "${SCRIPT_DIR}"/settings/sysctl/99-firewall-settings.conf /mnt/etc/sysctl.d/99-firewall-settings.conf
+    cp "${SCRIPT_DIR}"/settings/sysctl/99-watchdog-settings.conf /mnt/etc/sysctl.d/99-watchdog-settings.conf
+    cp "${SCRIPT_DIR}"/settings/sysctl/99-zram-settings.conf /mnt/etc/sysctl.d/99-zram-settings.conf
+    cp "${SCRIPT_DIR}"/settings/sysctl/99-hardening.conf /mnt/etc/sysctl.d/99-hardening.conf
 }
 
 set_modprobe() {
-    cp /root/tent/settings/modprobe/blacklist.conf /mnt/etc/modprobe.d/blacklist.conf
-    cp /root/tent/settings/modprobe/disable-firewire.conf /mnt/etc/modprobe.d/disable-firewire.conf
-    cp /root/tent/settings/modprobe/iwlwifi.conf /mnt/etc/modprobe.d/iwlwifi.conf
-    cp /root/tent/settings/modprobe/security-blacklist.conf /mnt/etc/modprobe.d/security-blacklist.conf
+    cp "${SCRIPT_DIR}"/settings/modprobe/blacklist.conf /mnt/etc/modprobe.d/blacklist.conf
+    cp "${SCRIPT_DIR}"/settings/modprobe/disable-firewire.conf /mnt/etc/modprobe.d/disable-firewire.conf
+    cp "${SCRIPT_DIR}"/settings/modprobe/iwlwifi.conf /mnt/etc/modprobe.d/iwlwifi.conf
+    cp "${SCRIPT_DIR}"/settings/modprobe/security-blacklist.conf /mnt/etc/modprobe.d/security-blacklist.conf
     if [ "$use_bluetooth" = "no" ]; then
-        cp /root/tent/settings/modprobe/disable-bluetooth.conf /mnt/etc/modprobe.d/disable-bluetooth.conf
+        cp "${SCRIPT_DIR}"/settings/modprobe/disable-bluetooth.conf /mnt/etc/modprobe.d/disable-bluetooth.conf
     fi
     if [ "$use_thunderbolt" = "no" ]; then
-        cp /root/tent/settings/modprobe/disable-thunderbolt.conf /mnt/etc/modprobe.d/disable-thunderbolt.conf
+        cp "${SCRIPT_DIR}"/settings/modprobe/disable-thunderbolt.conf /mnt/etc/modprobe.d/disable-thunderbolt.conf
     fi
 }
 
@@ -198,32 +213,32 @@ set_coredump() {
     mkdir -p /mnt/etc/systemd/system.conf.d
     mkdir -p /mnt/etc/systemd/user.conf.d
     mkdir -p /mnt/etc/security/limits.d
-    cp /root/tent/settings/systemd/disable-coredump-system.conf /mnt/etc/systemd/system.conf.d/60-disable-coredump.conf
-    cp /root/tent/settings/systemd/disable-coredump-user.conf /mnt/etc/systemd/user.conf.d/60-disable-coredump.conf
-    cp /root/tent/settings/security/disable-coredump.conf /mnt/etc/security/limits.d/60-disable-coredump.conf
+    cp "${SCRIPT_DIR}"/settings/systemd/disable-coredump-system.conf /mnt/etc/systemd/system.conf.d/60-disable-coredump.conf
+    cp "${SCRIPT_DIR}"/settings/systemd/disable-coredump-user.conf /mnt/etc/systemd/user.conf.d/60-disable-coredump.conf
+    cp "${SCRIPT_DIR}"/settings/security/disable-coredump.conf /mnt/etc/security/limits.d/60-disable-coredump.conf
 }
 
 set_run0() {
     # Deploy sudo wrapper (intercepts all sudo calls, redirects to run0)
-    cp /root/tent/settings/run0/sudo-wrapper /mnt/usr/local/bin/sudo
+    cp "${SCRIPT_DIR}"/settings/run0/sudo-wrapper /mnt/usr/local/bin/sudo
     chmod 755 /mnt/usr/local/bin/sudo
     chown root:root /mnt/usr/local/bin/sudo
 
     # Deploy polkit rules (wheel group auth with 5-minute caching)
     mkdir -p /mnt/etc/polkit-1/rules.d
-    cp /root/tent/settings/run0/90-run0.rules /mnt/etc/polkit-1/rules.d/90-run0.rules
+    cp "${SCRIPT_DIR}"/settings/run0/90-run0.rules /mnt/etc/polkit-1/rules.d/90-run0.rules
 
     # Deploy polkit cache timeout config
-    cp /root/tent/settings/run0/polkitd.conf /mnt/etc/polkit-1/polkitd.conf
+    cp "${SCRIPT_DIR}"/settings/run0/polkitd.conf /mnt/etc/polkit-1/polkitd.conf
 
     # Deploy SUID hardening script
-    cp /root/tent/settings/run0/harden-suid /mnt/usr/local/bin/harden-suid
+    cp "${SCRIPT_DIR}"/settings/run0/harden-suid /mnt/usr/local/bin/harden-suid
     chmod 755 /mnt/usr/local/bin/harden-suid
     chown root:root /mnt/usr/local/bin/harden-suid
 
     # Deploy pacman hook (runs harden-suid after every package install/upgrade)
     mkdir -p /mnt/etc/pacman.d/hooks
-    cp /root/tent/settings/run0/99-harden-suid.hook /mnt/etc/pacman.d/hooks/99-harden-suid.hook
+    cp "${SCRIPT_DIR}"/settings/run0/99-harden-suid.hook /mnt/etc/pacman.d/hooks/99-harden-suid.hook
 
     # Add PACMAN_AUTH and alias to user's .bashrc
     cat >> /mnt/home/"$username"/.bashrc <<'BASHRC'
@@ -245,8 +260,8 @@ BASHRC
 set_systemd_networkd() {
     mkdir -p /mnt/etc/systemd/network
     mkdir -p /mnt/etc/systemd/system/systemd-networkd-wait-online.service.d
-    cp /root/tent/settings/network/20-wired.network /mnt/etc/systemd/network/20-wired.network
-    cp /root/tent/settings/network/wait-for-only-one-interface.conf /mnt/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf
+    cp "${SCRIPT_DIR}"/settings/network/20-wired.network /mnt/etc/systemd/network/20-wired.network
+    cp "${SCRIPT_DIR}"/settings/network/wait-for-only-one-interface.conf /mnt/etc/systemd/system/systemd-networkd-wait-online.service.d/wait-for-only-one-interface.conf
     if [[ -f /mnt/etc/systemd/networkd.conf ]]; then
         sed -i '/^#ManageForeignRoutingPolicyRules=yes/c\ManageForeignRoutingPolicyRules=no' /mnt/etc/systemd/networkd.conf
     else
@@ -261,9 +276,9 @@ set_iwd() {
     mkdir -p /mnt/etc/systemd/network
     mkdir -p /mnt/etc/iwd
     mkdir -p /mnt/etc/systemd/system/iwd.service.d
-    cp /root/tent/settings/network/25-wireless.network /mnt/etc/systemd/network/25-wireless.network
-    cp /root/tent/settings/network/iwd.main.conf /mnt/etc/iwd/main.conf
-    cp /root/tent/settings/network/iwd.override.conf /mnt/etc/systemd/system/iwd.service.d/override.conf
+    cp "${SCRIPT_DIR}"/settings/network/25-wireless.network /mnt/etc/systemd/network/25-wireless.network
+    cp "${SCRIPT_DIR}"/settings/network/iwd.main.conf /mnt/etc/iwd/main.conf
+    cp "${SCRIPT_DIR}"/settings/network/iwd.override.conf /mnt/etc/systemd/system/iwd.service.d/override.conf
     if [[ -d /var/lib/iwd ]]; then
         cp -r /var/lib/iwd /mnt/var/lib
     fi
@@ -271,8 +286,71 @@ set_iwd() {
 
 set_systemd_resolved() {
     ln -sf /run/systemd/resolve/stub-resolv.conf /mnt/etc/resolv.conf
-    cp /root/tent/settings/network/resolved.conf /mnt/etc/systemd/resolved.conf
+    cp "${SCRIPT_DIR}"/settings/network/resolved.conf /mnt/etc/systemd/resolved.conf
     systemctl enable systemd-resolved --root=/mnt &>/dev/null
+}
+
+####################################################################################################
+# Installer functions (desktop)
+####################################################################################################
+
+desktop_base_installer() {
+    show_info "Installing base CLI packages"
+    install_packages "${SCRIPT_DIR}"/packages/base.conf
+
+    # Dev packages (toggle manually)
+    if false; then
+        show_info "Installing dev packages"
+        install_packages "${SCRIPT_DIR}"/packages/base-dev.conf
+    fi
+
+    # Docker packages (toggle manually)
+    if false; then
+        show_info "Installing docker packages"
+        install_packages "${SCRIPT_DIR}"/packages/base-docker.conf
+    fi
+
+    # Tailscale
+    show_info "Installing tailscale"
+    pacstrap /mnt tailscale >/dev/null
+    systemctl enable tailscaled.service --root=/mnt &>/dev/null
+
+    # Desktop common packages (includes sound, fonts, android)
+    show_info "Installing desktop packages"
+    install_packages "${SCRIPT_DIR}"/packages/desktop-base.conf
+
+    # GPU auto-detection
+    if lspci | grep -E "VGA|3D" | grep -qi intel; then
+        show_info "Intel GPU detected — installing drivers"
+        install_packages "${SCRIPT_DIR}"/packages/desktop-driver-intel.conf
+    elif lspci | grep -E "VGA|3D" | grep -qi amd; then
+        show_info "AMD GPU detected — installing drivers"
+        install_packages "${SCRIPT_DIR}"/packages/desktop-driver-amd.conf
+    else
+        show_info "No Intel or AMD GPU detected"
+    fi
+
+    # Services
+    systemctl enable pcscd.service --root=/mnt &>/dev/null
+}
+
+desktop_niri_installer() {
+    show_info "Installing Niri packages"
+    install_packages "${SCRIPT_DIR}"/packages/desktop-niri.conf
+
+    # xdg-desktop-portal-gnome (toggle manually)
+    if false; then
+        arch-chroot /mnt pacman -S --needed --noconfirm xdg-desktop-portal-gnome >/dev/null
+    else
+        echo 'org.freedesktop.impl.portal.FileChooser=gtk;' >> /mnt/usr/share/xdg-desktop-portal/niri-portals.conf
+    fi
+}
+
+desktop_gnome_installer() {
+    show_info "Installing GNOME packages"
+    install_packages "${SCRIPT_DIR}"/packages/desktop-gnome.conf
+
+    systemctl enable gdm.service --root=/mnt &>/dev/null
 }
 
 ####################################################################################################
@@ -414,6 +492,18 @@ else
     show_info "Privilege escalation: sudo (default)"
 fi
 
+# --- Desktop ---
+gum style --foreground 212 --bold --margin "1 0" "Desktop"
+desktop_selection=$(gum choose --header "Select desktop:" \
+    "Niri" \
+    "GNOME")
+
+case "$desktop_selection" in
+    "Niri")   desktop_choice="niri" ;;
+    "GNOME")  desktop_choice="gnome" ;;
+esac
+show_info "Desktop: $desktop_selection"
+
 # --- Network ---
 gum style --foreground 212 --bold --margin "1 0" "Network"
 network_selection=$(gum choose --header "Select network configuration:" \
@@ -527,6 +617,7 @@ gum style --border rounded --border-foreground 212 --padding "1 2" --margin "0 2
     "Bluetooth:       $use_bluetooth" \
     "Thunderbolt:     $use_thunderbolt" \
     "run0 (sudo):     $use_run0" \
+    "Desktop:         $desktop_selection" \
     "Network:         $network_selection" \
     "Hostname:        $hostname" \
     "Timezone:        $timezone" \
@@ -697,6 +788,21 @@ microcode_detector
 show_info "Installing the base system (pacstrap) - this may take a while"
 pacstrap -K /mnt base base-devel linux linux-headers linux-lts linux-lts-headers "$microcode" linux-firmware dosfstools cryptsetup nftables openssh tpm2-tools libfido2 pam-u2f pcsclite pcsc-tools audit man-db efitools efibootmgr reflector zram-generator sudo bash-completion curl wget git rsync stow restic rclone age gocryptfs fuse2 fuse3 vim jq fwupd usbguard >/dev/null
 show_info "Base system installed"
+
+####################################################################################################
+# Desktop packages
+####################################################################################################
+
+show_info "Installing desktop packages"
+desktop_base_installer
+
+if [ "$desktop_choice" = "niri" ]; then
+    show_info "Installing Niri desktop"
+    desktop_niri_installer
+elif [ "$desktop_choice" = "gnome" ]; then
+    show_info "Installing GNOME desktop"
+    desktop_gnome_installer
+fi
 
 ####################################################################################################
 # Generate /etc/fstab
@@ -999,7 +1105,7 @@ systemctl enable polkit.service --root=/mnt &>/dev/null
 
 show_info "Deploying polkit rules"
 mkdir -p /mnt/etc/polkit-1/rules.d
-cp /root/tent/settings/polkit/00-udisks-wheel.rules /mnt/etc/polkit-1/rules.d/00-udisks-wheel.rules
+cp "${SCRIPT_DIR}"/settings/polkit/00-udisks-wheel.rules /mnt/etc/polkit-1/rules.d/00-udisks-wheel.rules
 
 ####################################################################################################
 # Add user
@@ -1028,6 +1134,13 @@ arch-chroot /mnt runuser -u "$username" -- bash -c '
     cd ~
     rm -rf paru-bin
 '
+
+####################################################################################################
+# Install AUR packages (while NOPASSWD is still active)
+####################################################################################################
+
+show_info "Installing AUR packages"
+arch-chroot /mnt runuser -u "$username" -- paru -S --needed --noconfirm - < "${SCRIPT_DIR}"/packages/desktop-aur.conf >/dev/null
 
 # Remove NOPASSWD privileges
 rm /mnt/etc/sudoers.d/wheel
@@ -1160,6 +1273,17 @@ if [ "$use_run0" = "yes" ]; then
     show_info "SUID/SGID bits have been stripped (whitelist model). Capabilities applied."
     show_info "The pacman hook /etc/pacman.d/hooks/99-harden-suid.hook maintains this state."
     show_info "To whitelist a new SUID binary: edit /usr/local/bin/harden-suid"
+fi
+
+echo ""
+show_info "Post-install steps (run after first boot):"
+show_info "  sudo tailscale set --operator=\$USER"
+show_info "  systemctl --user enable --now ssh-agent.socket"
+
+if [ "$desktop_choice" = "niri" ]; then
+    show_info "  dconf write /org/gnome/desktop/interface/color-scheme \"'prefer-dark'\""
+    show_info "  Run 'nwg-look' and set the global GTK and icon theme and set prefer-dark"
+    show_info "  Open 'kvantummanager' to select and apply the Qt theme"
 fi
 
 gum style \
