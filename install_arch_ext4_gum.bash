@@ -385,10 +385,12 @@ fi
 # --- Unlock method ---
 fido2_backup="no"
 if [ "$encrypt_root" = "yes" ]; then
-    unlock_method=$(gum choose --header "Select LUKS unlock method:" \
-        "TPM2 + PIN" \
-        "FIDO2 + PIN" \
-        "Passphrase only")
+    unlock_choices=("FIDO2 + PIN" "Passphrase only")
+    if [[ -c /dev/tpmrm0 ]]; then
+        unlock_choices=("TPM2 + PIN" "${unlock_choices[@]}")
+    fi
+
+    unlock_method=$(gum choose --header "Select LUKS unlock method:" "${unlock_choices[@]}")
 
     case "$unlock_method" in
         "TPM2 + PIN")
