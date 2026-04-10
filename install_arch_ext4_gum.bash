@@ -2,7 +2,7 @@
 
 clear
 
-set -euo pipefail
+set -Eeuo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
@@ -293,13 +293,6 @@ desktop_base_installer() {
 desktop_niri_installer() {
     show_info "Installing Niri packages"
     install_packages "${SCRIPT_DIR}"/packages/desktop-niri.conf
-
-    # xdg-desktop-portal-gnome (toggle manually)
-    if false; then
-        arch-chroot /mnt pacman -S --needed --noconfirm xdg-desktop-portal-gnome >/dev/null
-    else
-        echo 'org.freedesktop.impl.portal.FileChooser=gtk;' >> /mnt/usr/share/xdg-desktop-portal/niri-portals.conf
-    fi
 }
 
 desktop_gnome_installer() {
@@ -967,8 +960,8 @@ show_info "Building EFISTUB entries"
 efi_dev=$(lsblk --noheadings --raw --output PKNAME "$ESP")
 efi_part_num=$(echo "$ESP" | grep -Eo '[0-9]+$')
 
-arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part "${efi_part_num}" --label "arch-linux-lts" --loader "EFI\Linux\arch-linux-lts.efi" --unicode
-arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part "${efi_part_num}" --label "arch-linux" --loader "EFI\Linux\arch-linux.efi" --unicode
+arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part "${efi_part_num}" --label "arch-linux-lts" --loader "\\EFI\\Linux\\arch-linux-lts.efi" --unicode
+arch-chroot /mnt efibootmgr --create --disk /dev/"${efi_dev}" --part "${efi_part_num}" --label "arch-linux" --loader "\\EFI\\Linux\\arch-linux.efi" --unicode
 
 ####################################################################################################
 # Final configurations

@@ -137,8 +137,6 @@ The script installs desktop packages from external `.conf` files via `pacman -S 
 - **Niri** (`packages/desktop-niri.conf`): niri, swaylock, swayidle, waybar, fuzzel, mako, Qt/Kvantum theming, xdg-desktop-portal-gtk, xwayland-satellite
 - **GNOME** (`packages/desktop-gnome.conf`): gnome-shell, gnome-control-center, GDM, nautilus, evince, CUPS printing
 
-For Niri, the script also patches `niri-portals.conf` to use the GTK file chooser portal.
-
 ### 8. System configuration
 
 The script configures:
@@ -463,7 +461,7 @@ No other changes to the main script are needed.
 
 ## Error Handling
 
-The script uses `set -euo pipefail` and an ERR trap. If any command fails:
+The script uses `set -Eeuo pipefail` and an ERR trap. If any command fails:
 
 1. Temporary NOPASSWD sudo privileges are removed
 2. All mounts under `/mnt` are unmounted
