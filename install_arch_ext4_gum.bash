@@ -68,6 +68,16 @@ install_packages() {
     arch-chroot /mnt pacman -S --needed --noconfirm - < "$1" >/dev/null
 }
 
+save_encrypted_recovery_key() {
+    local recovery_key_output=$1
+    local recovery_key_path="/home/$username/.luks-recovery-key.age"
+
+    show_info "Encrypting recovery key with age"
+    printf '%s\n' "$recovery_key_output" | arch-chroot /mnt runuser -u "$username" -- age -p -o "$recovery_key_path"
+    arch-chroot /mnt chmod 600 "$recovery_key_path"
+    show_info "Encrypted recovery key saved to $recovery_key_path"
+}
+
 device_has_mounts() {
     lsblk --noheadings --output MOUNTPOINTS "$1" | grep -q '[^[:space:]]'
 }
@@ -1238,15 +1248,20 @@ arch-chroot /mnt passwd -l root &>/dev/null
 ####################################################################################################
 
 if [ "$unlock_method" = "tpm2" ]; then
+    recovery_key_output=""
     show_info "Enrolling TPM2 LUKS key with PIN: the password to unlock the root volume is your user password"
     systemd-cryptenroll "$ROOT" --tpm2-device=auto --tpm2-with-pin=yes
     show_info "Enrolling recovery key"
-    systemd-cryptenroll "$ROOT" --recovery-key
+    recovery_key_output=$(systemd-cryptenroll "$ROOT" --recovery-key)
+    printf '%s\n' "$recovery_key_output"
     show_warn "Save the recovery key shown above now, including the QR code if you want to scan it."
     read -rp "Press Enter after you have saved the recovery key..."
+    save_encrypted_recovery_key "$recovery_key_output"
+    unset recovery_key_output
     show_info "Removing original password keyslot"
     systemd-cryptenroll "$ROOT" --wipe-slot=password
 elif [ "$unlock_method" = "fido2" ]; then
+    recovery_key_output=""
     gum style --foreground 212 --bold --margin "1 0" "FIDO2 Enrollment"
     gum style --foreground 214 --margin "0 2" \
         "Insert your primary FIDO2 key and press Enter to continue."
@@ -1264,9 +1279,12 @@ elif [ "$unlock_method" = "fido2" ]; then
     fi
 
     show_info "Enrolling recovery key"
-    systemd-cryptenroll "$ROOT" --recovery-key
+    recovery_key_output=$(systemd-cryptenroll "$ROOT" --recovery-key)
+    printf '%s\n' "$recovery_key_output"
     show_warn "Save the recovery key shown above now, including the QR code if you want to scan it."
     read -rp "Press Enter after you have saved the recovery key..."
+    save_encrypted_recovery_key "$recovery_key_output"
+    unset recovery_key_output
     show_info "Removing original password keyslot"
     systemd-cryptenroll "$ROOT" --wipe-slot=password
 fi
@@ -1311,6 +1329,8 @@ if [ "$encrypt_root" = "yes" ]; then
     case "$unlock_method" in
         tpm2)
             show_info "Root partition is encrypted (LUKS) with TPM2 + PIN. A recovery key has also been enrolled."
+            show_info "Encrypted recovery key saved to ~/.luks-recovery-key.age"
+            show_info "Decrypt it with: age -d ~/.luks-recovery-key.age"
             show_info "Use systemd-cryptenroll to manage enrollment slots."
             ;;
         fido2)
@@ -1320,6 +1340,8 @@ if [ "$encrypt_root" = "yes" ]; then
                 show_info "Root partition is encrypted (LUKS) with FIDO2 + PIN. A recovery key has also been enrolled."
             fi
             show_info "If no FIDO2 key is present at boot, the system will wait 30 seconds then fall back to a passphrase prompt (use the recovery key)."
+            show_info "Encrypted recovery key saved to ~/.luks-recovery-key.age"
+            show_info "Decrypt it with: age -d ~/.luks-recovery-key.age"
             show_info "Use systemd-cryptenroll to manage enrollment slots."
             ;;
         passphrase)

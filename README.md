@@ -7,8 +7,8 @@ An interactive, security-focused Arch Linux installation script with a terminal 
 - **Interactive TUI** -- guided prompts for every decision; no config files to edit beforehand
 - **Desktop environment** -- choose between Niri (tiling Wayland compositor) or GNOME; packages are managed via external `.conf` files for easy customization
 - **LUKS encryption** -- optional full-disk encryption using `aes-xts-plain64` (512-bit key, SHA-512)
-- **TPM2 + PIN unlock** -- optional automatic unlock sealed to the TPM2 chip with a PIN and a recovery key
-- **FIDO2 + PIN unlock** -- optional LUKS unlock with a FIDO2 security key (e.g., YubiKey) and a PIN, with optional backup key enrollment and a recovery key
+- **TPM2 + PIN unlock** -- optional automatic unlock sealed to the TPM2 chip with a PIN and a recovery key, with the recovery key also encrypted to `~/.luks-recovery-key.age`
+- **FIDO2 + PIN unlock** -- optional LUKS unlock with a FIDO2 security key (e.g., YubiKey) and a PIN, with optional backup key enrollment and a recovery key, with the recovery key also encrypted to `~/.luks-recovery-key.age`
 - **Secure Boot** -- optional enrollment of custom Secure Boot keys via `sbctl`, with automatic UKI and fwupd EFI binary signing
 - **Kernel lockdown** -- optional `lockdown=integrity` mode, preventing modification of the running kernel (unsigned module loading, `/dev/mem` writes, kexec, etc.)
 - **AppArmor** -- optional mandatory access control with audit logging
@@ -192,20 +192,20 @@ The root account is locked (`passwd -l root`). All administration is done via `s
 #### TPM2 + PIN
 
 1. A TPM2 key is enrolled with a PIN
-2. A recovery key is enrolled (displayed on screen -- **write it down**)
+2. A recovery key is enrolled (displayed on screen -- **write it down**) and then encrypted to `~/.luks-recovery-key.age`
 3. The original password keyslot is removed
 
-At boot, the system unlocks when the TPM2 unseals the key and you enter the correct PIN. The recovery key can be used as a fallback if the TPM is cleared or the firmware changes.
+At boot, the system unlocks when the TPM2 unseals the key and you enter the correct PIN. The recovery key can be used as a fallback if the TPM is cleared or the firmware changes. Decrypt the saved copy later with `age -d ~/.luks-recovery-key.age`.
 
 #### FIDO2 + PIN
 
 1. You are prompted to insert your primary FIDO2 key
 2. The primary FIDO2 key is enrolled with a client PIN (Ed25519 / `eddsa` credential algorithm)
 3. If you opted for a backup key: you are prompted to swap keys, then the backup FIDO2 key is enrolled with its own PIN
-4. A recovery key is enrolled (displayed on screen -- **write it down**)
+4. A recovery key is enrolled (displayed on screen -- **write it down**) and then encrypted to `~/.luks-recovery-key.age`
 5. The original password keyslot is removed
 
-At boot, `sd-encrypt` tries to detect a FIDO2 device. If found, it prompts for the FIDO2 PIN and unlocks. If no FIDO2 device is present within 30 seconds, it falls back to a passphrase prompt where you can enter the recovery key.
+At boot, `sd-encrypt` tries to detect a FIDO2 device. If found, it prompts for the FIDO2 PIN and unlocks. If no FIDO2 device is present within 30 seconds, it falls back to a passphrase prompt where you can enter the recovery key. Decrypt the saved copy later with `age -d ~/.luks-recovery-key.age`.
 
 Either the primary or backup FIDO2 key will work at the boot prompt -- they are independent LUKS keyslots.
 
@@ -393,8 +393,8 @@ When LUKS encryption is enabled:
 
 - **Cipher**: `aes-xts-plain64` with a 512-bit key (256-bit effective with XTS) and SHA-512 key derivation
 - **systemd-based unlock**: uses `sd-encrypt` in the initramfs with `crypttab.initramfs`
-- **TPM2 binding** (optional): the unlock key is sealed to the TPM2 chip, requiring a PIN to unseal. A recovery key is also enrolled for emergencies.
-- **FIDO2 binding** (optional): the unlock key is tied to a FIDO2 security key with a client PIN (Ed25519 credential). A backup FIDO2 key and a recovery key can also be enrolled. If no FIDO2 device is present at boot, `sd-encrypt` falls back to a passphrase prompt after a 30-second timeout.
+- **TPM2 binding** (optional): the unlock key is sealed to the TPM2 chip, requiring a PIN to unseal. A recovery key is also enrolled for emergencies and encrypted to `~/.luks-recovery-key.age`.
+- **FIDO2 binding** (optional): the unlock key is tied to a FIDO2 security key with a client PIN (Ed25519 credential). A backup FIDO2 key and a recovery key can also be enrolled. If no FIDO2 device is present at boot, `sd-encrypt` falls back to a passphrase prompt after a 30-second timeout. The recovery key is also encrypted to `~/.luks-recovery-key.age`.
 
 ## Post-Installation
 
