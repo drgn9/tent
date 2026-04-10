@@ -148,7 +148,6 @@ required_paths=(
     "${SCRIPT_DIR}"/packages/desktop-driver-amd.conf
     "${SCRIPT_DIR}"/packages/desktop-niri.conf
     "${SCRIPT_DIR}"/packages/desktop-gnome.conf
-    "${SCRIPT_DIR}"/packages/desktop-aur.conf
 )
 
 missing_paths=()
@@ -1213,13 +1212,6 @@ arch-chroot /mnt runuser -u "$username" -- bash -c '
     rm -rf paru-bin
 '
 
-####################################################################################################
-# Install AUR packages (while NOPASSWD is still active)
-####################################################################################################
-
-show_info "Installing AUR packages"
-arch-chroot /mnt runuser -u "$username" -- paru -S --needed --noconfirm - < "${SCRIPT_DIR}"/packages/desktop-aur.conf >/dev/null
-
 # Remove NOPASSWD privileges
 rm /mnt/etc/sudoers.d/wheel
 echo "%wheel ALL=(ALL:ALL) ALL" > /mnt/etc/sudoers.d/wheel
@@ -1248,6 +1240,8 @@ if [ "$unlock_method" = "tpm2" ]; then
     systemd-cryptenroll "$ROOT" --tpm2-device=auto --tpm2-with-pin=yes
     show_info "Enrolling recovery key"
     systemd-cryptenroll "$ROOT" --recovery-key
+    show_warn "Save the recovery key shown above now, including the QR code if you want to scan it."
+    read -rp "Press Enter after you have saved the recovery key..."
     show_info "Removing original password keyslot"
     systemd-cryptenroll "$ROOT" --wipe-slot=password
 elif [ "$unlock_method" = "fido2" ]; then
@@ -1269,6 +1263,8 @@ elif [ "$unlock_method" = "fido2" ]; then
 
     show_info "Enrolling recovery key"
     systemd-cryptenroll "$ROOT" --recovery-key
+    show_warn "Save the recovery key shown above now, including the QR code if you want to scan it."
+    read -rp "Press Enter after you have saved the recovery key..."
     show_info "Removing original password keyslot"
     systemd-cryptenroll "$ROOT" --wipe-slot=password
 fi
@@ -1347,13 +1343,20 @@ if [ "$desktop_choice" = "niri" ]; then
     show_info "  Open 'kvantummanager' to select and apply the Qt theme"
 fi
 
-gum style \
-    --foreground 82 --border-foreground 82 --border double \
-    --align center --width 70 --margin "1 2" --padding "1 2" \
-    "Installation Complete" \
-    "" \
-    "Reboot into firmware and enable Secure Boot:" \
-    "systemctl reboot --firmware-setup"
+if [ "$secure_boot" = "yes" ]; then
+    gum style \
+        --foreground 82 --border-foreground 82 --border double \
+        --align center --width 70 --margin "1 2" --padding "1 2" \
+        "Installation Complete" \
+        "" \
+        "Reboot into firmware and enable Secure Boot:" \
+        "systemctl reboot --firmware-setup"
+else
+    gum style \
+        --foreground 82 --border-foreground 82 --border double \
+        --align center --width 70 --margin "1 2" --padding "1 2" \
+        "Installation Complete"
+fi
 
 exit
 

@@ -25,7 +25,7 @@ An interactive, security-focused Arch Linux installation script with a terminal 
 - **Kernel hardening** -- sysctl tunables for network firewall hardening (SYN cookies, reverse path filtering, ICMP redirect rejection, source route blocking, broadcast ping rejection, TIME-WAIT protection), watchdog disabled, ZRAM-optimized VM settings
 - **Core dump disabled** -- disabled at the systemd system, user, and security limits levels
 - **Module blacklisting** -- PC speaker, watchdog timers, and FireWire disabled by default; additional configs for disabling Bluetooth, webcam, microphone, and Thunderbolt are included in the settings directory for manual use
-- **AUR helper** -- `paru` installed automatically; AUR packages (`yay-bin`, `brave-bin`, `kvkonqi`) installed from `packages/desktop-aur.conf`
+- **AUR helper** -- `paru` installed automatically so AUR packages can be managed manually after installation
 - **Root account locked** -- root login is disabled; administration is done through standard `sudo` via the `wheel` group
 - **External package lists** -- all packages are defined in plain-text `.conf` files under `packages/`, making it easy to customize without editing the main script
 
@@ -177,12 +177,11 @@ There is no bootloader. The UEFI firmware loads the UKI directly. Use your firmw
 - **pacman**: color output, parallel downloads (10)
 - **reflector**: configured for your selected country (HTTPS, top 5 mirrors). Run `reflector` manually or enable `reflector.timer` to auto-update the mirrorlist.
 
-### 11. User account, AUR helper, and desktop AUR packages
+### 11. User account and AUR helper
 
 - A user account is created in the `wheel` group
 - `paru` (AUR helper) is installed from the AUR
-- AUR packages from `packages/desktop-aur.conf` are installed (`yay-bin`, `brave-bin`, `kvkonqi`)
-- Temporary `NOPASSWD` sudo is used only during `paru` and AUR package installation, then replaced with standard password-required sudo: `%wheel ALL=(ALL:ALL) ALL`
+- Temporary `NOPASSWD` sudo is used only while bootstrapping `paru`, then replaced with standard password-required sudo: `%wheel ALL=(ALL:ALL) ALL`
 
 ### 12. Root account lockdown
 
@@ -328,8 +327,7 @@ tent/
 │   ├── desktop-driver-intel.conf       # Intel GPU drivers (auto-detected)
 │   ├── desktop-driver-amd.conf         # AMD GPU drivers (auto-detected)
 │   ├── desktop-niri.conf               # Niri WM + Qt/Kvantum theming (22 packages)
-│   ├── desktop-gnome.conf              # GNOME + apps + printing (19 packages)
-│   └── desktop-aur.conf                # AUR packages: yay-bin, brave-bin, kvkonqi
+│   └── desktop-gnome.conf              # GNOME + apps + printing (19 packages)
 └── settings/
     ├── modprobe/
     │   ├── blacklist.conf              # Blacklists: PC speaker, watchdog timers
