@@ -305,14 +305,12 @@ desktop_base_installer() {
     show_info "Installing base CLI packages"
     install_packages "${SCRIPT_DIR}"/packages/base.conf
 
-    # Dev packages (toggle manually)
-    if false; then
+    if [ "$use_dev_packages" = "yes" ]; then
         show_info "Installing dev packages"
         install_packages "${SCRIPT_DIR}"/packages/base-dev.conf
     fi
 
-    # Docker packages (toggle manually)
-    if false; then
+    if [ "$use_docker_packages" = "yes" ]; then
         show_info "Installing docker packages"
         install_packages "${SCRIPT_DIR}"/packages/base-docker.conf
     fi
@@ -494,6 +492,24 @@ case "$desktop_selection" in
 esac
 show_info "Desktop: $desktop_selection"
 
+# --- Optional Packages ---
+gum style --foreground 212 --bold --margin "1 0" "Optional Packages"
+if gum confirm "Install dev packages?"; then
+    use_dev_packages="yes"
+    show_info "Dev packages: enabled"
+else
+    use_dev_packages="no"
+    show_info "Dev packages: disabled"
+fi
+
+if gum confirm "Install Docker packages?"; then
+    use_docker_packages="yes"
+    show_info "Docker packages: enabled"
+else
+    use_docker_packages="no"
+    show_info "Docker packages: disabled"
+fi
+
 # --- Network ---
 gum style --foreground 212 --bold --margin "1 0" "Network"
 network_selection=$(gum choose --header "Select network configuration:" \
@@ -607,6 +623,8 @@ gum style --border rounded --border-foreground 212 --padding "1 2" --margin "0 2
     "Bluetooth:       $use_bluetooth" \
     "Thunderbolt:     $use_thunderbolt" \
     "Desktop:         $desktop_selection" \
+    "Dev packages:    $use_dev_packages" \
+    "Docker:          $use_docker_packages" \
     "Network:         $network_selection" \
     "Hostname:        $hostname" \
     "Timezone:        $timezone" \

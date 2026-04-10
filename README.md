@@ -127,7 +127,7 @@ The script installs desktop packages from external `.conf` files via `pacman -S 
 - **Desktop common** (`packages/desktop-base.conf`): 55 packages including mesa, PipeWire audio stack, fonts, yubikey tools, bitwarden, keepassxc, alacritty, libreoffice, android tools, etc.
 - **GPU drivers**: auto-detected via `lspci` -- Intel (`packages/desktop-driver-intel.conf`) or AMD (`packages/desktop-driver-amd.conf`)
 
-**Toggled manually** (change `if false` to `if true` in the script):
+**Optional installer prompts**:
 
 - **Dev tools** (`packages/base-dev.conf`): neovim, lazygit, fzf, ripgrep, bat, starship, etc.
 - **Docker** (`packages/base-docker.conf`): docker, docker-buildx, docker-compose
@@ -455,7 +455,7 @@ All packages are defined in plain-text files under `packages/`. Each file contai
 
 - **Add a package**: append its name to the appropriate `.conf` file
 - **Remove a package**: delete its line from the `.conf` file
-- **Enable dev/docker packages**: change `if false` to `if true` in `desktop_base_installer()` in the main script
+- **Dev and Docker packages**: answer the optional package prompts during the installer run
 
 No other changes to the main script are needed.
 
