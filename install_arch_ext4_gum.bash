@@ -68,6 +68,56 @@ install_packages() {
     arch-chroot /mnt pacman -S --needed --noconfirm - < "$1" >/dev/null
 }
 
+device_has_mounts() {
+    lsblk --noheadings --output MOUNTPOINTS "$1" | grep -q '[^[:space:]]'
+}
+
+partition_is_mounted() {
+    lsblk --noheadings --output MOUNTPOINTS "$1" | grep -q '[^[:space:]]'
+}
+
+validate_disk_target() {
+    local device_path=$1
+    local device_type
+
+    if [[ ! -b "$device_path" ]]; then
+        show_error "$device_path is not a block device"
+        return 1
+    fi
+
+    device_type=$(lsblk --noheadings --output TYPE "$device_path" | head -n 1 | tr -d '[:space:]')
+    if [[ "$device_type" != "disk" ]]; then
+        show_error "$device_path is not a disk"
+        return 1
+    fi
+
+    if device_has_mounts "$device_path"; then
+        show_error "$device_path or one of its partitions is mounted"
+        return 1
+    fi
+}
+
+validate_partition_target() {
+    local part_path=$1
+    local part_type
+
+    if [[ ! -b "$part_path" ]]; then
+        show_error "$part_path is not a block device"
+        return 1
+    fi
+
+    part_type=$(lsblk --noheadings --output TYPE "$part_path" | head -n 1 | tr -d '[:space:]')
+    if [[ "$part_type" != "part" ]]; then
+        show_error "$part_path is not a partition"
+        return 1
+    fi
+
+    if partition_is_mounted "$part_path"; then
+        show_error "$part_path is mounted"
+        return 1
+    fi
+}
+
 required_paths=(
     "${SCRIPT_DIR}"/settings/network/NetworkManager.conf
     "${SCRIPT_DIR}"/settings/network/20-wired.network
@@ -122,6 +172,7 @@ cleanup() {
     show_error "Installation failed at line $1"
     rm -f /mnt/etc/sudoers.d/wheel 2>/dev/null || true
     umount -R /mnt 2>/dev/null || true
+    cryptsetup close to_be_wiped 2>/dev/null || true
     cryptsetup close cryptroot 2>/dev/null || true
 }
 trap 'cleanup $LINENO' ERR
@@ -568,6 +619,21 @@ if ! gum confirm "Proceed with installation?"; then
     exit 0
 fi
 
+if findmnt -rn /mnt >/dev/null 2>&1; then
+    show_error "/mnt is already mounted. Unmount it before running the installer."
+    exit 1
+fi
+
+if [[ -e /dev/mapper/cryptroot ]]; then
+    show_error "/dev/mapper/cryptroot already exists. Close it before running the installer."
+    exit 1
+fi
+
+if [[ -e /dev/mapper/to_be_wiped ]]; then
+    show_error "/dev/mapper/to_be_wiped already exists. Close it before running the installer."
+    exit 1
+fi
+
 ####################################################################################################
 # Secure wipe disks
 ####################################################################################################
@@ -589,11 +655,23 @@ while true; do
     fi
 
     device_path=$(echo "$device" | awk '{print $1}')
+
+    if ! validate_disk_target "$device_path"; then
+        exit 1
+    fi
+
+    if ! gum confirm "This will permanently destroy all data on $device_path. Continue?"; then
+        show_info "Skipping secure wipe for $device_path"
+        continue
+    fi
+
     show_info "Wiping $device_path"
     wipefs --all "$device_path"
     cryptsetup open --type plain -c aes-xts-plain64 -d /dev/urandom "$device_path" to_be_wiped
-    dd if=/dev/zero of=/dev/mapper/to_be_wiped bs=1M status=progress || true
+    dd if=/dev/zero of=/dev/mapper/to_be_wiped bs=1M status=progress
     cryptsetup close /dev/mapper/to_be_wiped
+    partprobe "$device_path" || true
+    udevadm settle || true
     show_info "Secure wipe complete for $device_path"
 done
 
@@ -618,11 +696,20 @@ while true; do
     fi
 
     device_path=$(echo "$device" | awk '{print $1}')
+
+    if ! validate_disk_target "$device_path"; then
+        exit 1
+    fi
+
     show_info "Opening fdisk for $device_path"
-    fdisk "$device_path" || true
+    fdisk "$device_path"
+    partprobe "$device_path" || true
+    udevadm settle || true
 done
 
 # Build partition list for selection
+partprobe || true
+udevadm settle || true
 partitions=$(lsblk --paths --list --noheadings --output=name,size,model,type,fstype,mountpoints | awk '$4 == "part"')
 
 if [[ -z "$partitions" ]]; then
@@ -634,16 +721,25 @@ fi
 gum style --foreground 212 --bold --margin "1 0" "Select Partitions"
 
 efi_part=$(echo "$partitions" | gum choose --header "Select the EFI partition:" | awk '{print $1}')
+if ! validate_partition_target "$efi_part"; then
+    exit 1
+fi
 show_info "EFI partition: $efi_part"
 
 # --- Root partition ---
 root_part=$(echo "$partitions" | gum choose --header "Select the root partition:" | awk '{print $1}')
+if ! validate_partition_target "$root_part"; then
+    exit 1
+fi
 show_info "Root partition: $root_part"
 
 # --- Snapshot partition ---
 if gum confirm "Mount a snapshot partition?"; then
     use_snap_part="yes"
     snap_part=$(echo "$partitions" | gum choose --header "Select the snapshot partition:" | awk '{print $1}')
+    if ! validate_partition_target "$snap_part"; then
+        exit 1
+    fi
     show_info "Snapshot partition: $snap_part"
 else
     use_snap_part="no"
@@ -661,9 +757,27 @@ if [[ "$use_snap_part" = "yes" ]]; then
     fi
 fi
 
+gum style --foreground 212 --bold --margin "1 0" "Confirm Formatting"
+show_warn "The selected partitions will now be formatted."
+show_info "EFI partition: $efi_part"
+show_info "Root partition: $root_part"
+show_info "Encryption: $encrypt_root"
+if [ "$use_snap_part" = "yes" ]; then
+    show_info "Snapshot partition: $snap_part"
+fi
+
+if ! gum confirm "Proceed with formatting the selected partitions?"; then
+    show_info "Installation cancelled"
+    exit 0
+fi
+
 ####################################################################################################
 # Format EFI partition
 ####################################################################################################
+
+if ! validate_partition_target "$efi_part"; then
+    exit 1
+fi
 
 show_info "Formatting EFI partition"
 mkfs.fat -n EFI -F 32 "$efi_part"
@@ -673,6 +787,10 @@ mkfs.fat -n EFI -F 32 "$efi_part"
 ####################################################################################################
 
 show_info "Formatting root partition"
+
+if ! validate_partition_target "$root_part"; then
+    exit 1
+fi
 
 if cryptsetup isLuks "$root_part"; then
     show_info "LUKS header found - removing header"
@@ -711,6 +829,10 @@ mkdir -p /mnt/.snapshots
 mount -o fmask=0137,dmask=0027 "$ESP" /mnt/efi
 
 if [ "$use_snap_part" = "yes" ]; then
+    if ! validate_partition_target "$snap_part"; then
+        exit 1
+    fi
+
     show_info "Formatting and mounting snapshot partition"
     wipefs --all "$snap_part" 2> /dev/null
     mkfs.ext4 -L "snapshots" "$snap_part"
