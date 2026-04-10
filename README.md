@@ -12,7 +12,6 @@ An interactive, security-focused Arch Linux installation script with a terminal 
 - **Secure Boot** -- optional enrollment of custom Secure Boot keys via `sbctl`, with automatic UKI and fwupd EFI binary signing
 - **Kernel lockdown** -- optional `lockdown=integrity` mode, preventing modification of the running kernel (unsigned module loading, `/dev/mem` writes, kexec, etc.)
 - **AppArmor** -- optional mandatory access control with audit logging
-- **run0 (sudo replacement)** -- optional replacement of `sudo` with `run0` via polkit, including SUID/SGID bit stripping, capability-based whitelisting, and a pacman hook to maintain hardening across package updates
 - **Hardware toggles** -- interactive prompts to disable Bluetooth and Thunderbolt via modprobe blacklists
 - **USBGuard** -- installed but not enabled; configure after first boot to whitelist trusted USB devices
 - **IOMMU / DMA protection** -- forced IOMMU with strict TLB invalidation and passthrough disabled via kernel cmdline (CPU-specific: `intel_iommu=on` on Intel)
@@ -27,7 +26,7 @@ An interactive, security-focused Arch Linux installation script with a terminal 
 - **Core dump disabled** -- disabled at the systemd system, user, and security limits levels
 - **Module blacklisting** -- PC speaker, watchdog timers, and FireWire disabled by default; additional configs for disabling Bluetooth, webcam, microphone, and Thunderbolt are included in the settings directory for manual use
 - **AUR helper** -- `paru` installed automatically; AUR packages (`yay-bin`, `brave-bin`, `kvkonqi`) installed from `packages/desktop-aur.conf`
-- **Root account locked** -- root login is disabled; administration is done through `sudo` (or `run0` if selected) via the `wheel` group
+- **Root account locked** -- root login is disabled; administration is done through standard `sudo` via the `wheel` group
 - **External package lists** -- all packages are defined in plain-text `.conf` files under `packages/`, making it easy to customize without editing the main script
 
 ## Requirements
@@ -71,7 +70,6 @@ You are asked to configure the following, in order:
 | Kernel lockdown | yes / no | Enables `lockdown=integrity` via kernel cmdline |
 | Disable Bluetooth | yes / no | Blacklists Bluetooth modules via modprobe |
 | Disable Thunderbolt | yes / no | Blacklists Thunderbolt modules via modprobe |
-| run0 (sudo replacement) | yes / no | Replaces sudo with run0, strips SUID/SGID bits, applies capabilities |
 | Desktop | Niri / GNOME | Selects the desktop environment to install |
 | Network stack | iwd + systemd-networkd / systemd-networkd only / NetworkManager | |
 | Hostname | free text | Validated against RFC 1123 |
@@ -188,22 +186,11 @@ There is no bootloader. The UEFI firmware loads the UKI directly. Use your firmw
 - AUR packages from `packages/desktop-aur.conf` are installed (`yay-bin`, `brave-bin`, `kvkonqi`)
 - Temporary `NOPASSWD` sudo is used only during `paru` and AUR package installation, then replaced with standard password-required sudo: `%wheel ALL=(ALL:ALL) ALL`
 
-### 12. run0 hardening (if enabled)
+### 12. Root account lockdown
 
-If you opted to replace sudo with run0:
+The root account is locked (`passwd -l root`). All administration is done via `sudo`.
 
-- A `sudo` wrapper script is deployed to `/usr/local/bin/sudo` that transparently redirects all sudo calls to `run0`
-- Polkit rules grant `wheel` group members authentication with a 5-minute cache timeout
-- SUID/SGID bits are stripped from all binaries (whitelist model), and capabilities are applied where needed
-- A pacman hook (`99-harden-suid.hook`) automatically re-runs the hardening after every package install/upgrade
-- The `PACMAN_AUTH` environment variable and `sudo` alias are added to the user's `.bashrc`
-- The sudoers file is locked to prevent direct sudo access
-
-### 13. Root account lockdown
-
-The root account is locked (`passwd -l root`). All administration is done via `sudo` (or `run0` if selected).
-
-### 14. LUKS key enrollment (if TPM2 or FIDO2 is enabled)
+### 13. LUKS key enrollment (if TPM2 or FIDO2 is enabled)
 
 #### TPM2 + PIN
 
@@ -225,7 +212,7 @@ At boot, `sd-encrypt` tries to detect a FIDO2 device. If found, it prompts for t
 
 Either the primary or backup FIDO2 key will work at the boot prompt -- they are independent LUKS keyslots.
 
-### 15. Secure Boot (if enabled)
+### 14. Secure Boot (if enabled)
 
 If you opted for Secure Boot:
 
@@ -365,12 +352,6 @@ tent/
     │   └── wait-for-only-one-interface.conf  # Wait for any single interface (faster boot)
     ├── polkit/
     │   └── 00-udisks-wheel.rules       # Allow wheel group to manage disks via udisks2
-    ├── run0/
-    │   ├── 90-run0.rules               # Polkit rules for run0 wheel group auth
-    │   ├── 99-harden-suid.hook         # Pacman hook to re-run SUID hardening after updates
-    │   ├── harden-suid                 # Script to strip SUID/SGID bits and apply capabilities
-    │   ├── polkitd.conf                # Polkit daemon config with cache timeout
-    │   └── sudo-wrapper                # Wrapper that redirects sudo calls to run0
     ├── security/
     │   └── disable-coredump.conf       # Disable core dumps via security limits
     ├── sysctl/
