@@ -351,6 +351,10 @@ desktop_base_installer() {
 desktop_niri_installer() {
     show_info "Installing Niri packages"
     install_packages "${SCRIPT_DIR}"/packages/desktop-niri.conf
+
+    mkdir -p /mnt/home/"$username"/.config/systemd/user/niri.service.wants
+    ln -sf /usr/lib/systemd/user/waybar.service /mnt/home/"$username"/.config/systemd/user/niri.service.wants/waybar.service
+    chown -R "$username":"$username" /mnt/home/"$username"/.config
 }
 
 desktop_gnome_installer() {
