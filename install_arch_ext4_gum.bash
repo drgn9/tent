@@ -129,6 +129,8 @@ validate_partition_target() {
 }
 
 required_paths=(
+    "${SCRIPT_DIR}"/settings/apparmor/parser.conf.append
+    "${SCRIPT_DIR}"/settings/apparmor/xdg-user-dirs.local
     "${SCRIPT_DIR}"/settings/network/NetworkManager.conf
     "${SCRIPT_DIR}"/settings/network/20-wired.network
     "${SCRIPT_DIR}"/settings/network/wait-for-only-one-interface.conf
@@ -193,14 +195,23 @@ trap 'cleanup $LINENO' ERR
 apparmor_installer() {
     if [ "$use_apparmor" = "yes" ]; then
         pacstrap /mnt apparmor >/dev/null
+        mkdir -p /mnt/etc/apparmor/earlypolicy
+        mkdir -p /mnt/etc/apparmor.d/tunables/xdg-user-dirs.d/apparmor.d.d
+        mkdir -p /mnt/etc/apparmor.d/local
+        touch /mnt/etc/apparmor/parser.conf
         cat > /mnt/etc/cmdline.d/security.conf <<EOF
 # enable apparmor
 lsm=landlock,lockdown,yama,integrity,apparmor,bpf audit=1 audit_backlog_limit=256
 EOF
         systemctl enable apparmor.service --root=/mnt &>/dev/null
         systemctl enable auditd.service --root=/mnt &>/dev/null
-        echo "write-cache" >> /mnt/etc/apparmor/parser.conf
-        echo "Optimize=compress-fast" >> /mnt/etc/apparmor/parser.conf
+
+        while IFS= read -r line; do
+            [[ -n "$line" ]] || continue
+            grep -qxF "$line" /mnt/etc/apparmor/parser.conf || printf '%s\n' "$line" >> /mnt/etc/apparmor/parser.conf
+        done < "${SCRIPT_DIR}"/settings/apparmor/parser.conf.append
+
+        cp "${SCRIPT_DIR}"/settings/apparmor/xdg-user-dirs.local /mnt/etc/apparmor.d/tunables/xdg-user-dirs.d/apparmor.d.d/local
     else
         cat > /mnt/etc/cmdline.d/security.conf <<EOF
 # apparmor disabled
@@ -1364,6 +1375,14 @@ echo ""
 show_info "Post-install steps (run after first boot):"
 show_info "  sudo tailscale set --operator=\$USER"
 show_info "  systemctl --user enable --now ssh-agent.socket"
+
+if [ "$use_apparmor" = "yes" ]; then
+    show_info "  paru -S apparmor.d"
+    show_info "  sudo systemctl reload apparmor.service"
+    show_info "  reboot"
+    show_info "  sudo aa-status"
+    show_info "  sudo aa-log"
+fi
 
 if [ "$desktop_choice" = "niri" ]; then
     show_info "  dconf write /org/gnome/desktop/interface/color-scheme \"'prefer-dark'\""
