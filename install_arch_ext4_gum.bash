@@ -31,8 +31,18 @@ command -v cryptsetup &>/dev/null || deps_needed+=("cryptsetup")
 command -v efibootmgr &>/dev/null || deps_needed+=("efibootmgr")
 
 if [[ ${#deps_needed[@]} -gt 0 ]]; then
+    deps_log=$(mktemp)
     echo "Installing dependencies: ${deps_needed[*]}"
-    pacman -Syu --noconfirm "${deps_needed[@]}" &>/dev/null
+    if pacman -Sy --needed --noconfirm archlinux-keyring >"$deps_log" 2>&1 && \
+        pacman -S --needed --noconfirm "${deps_needed[@]}" >>"$deps_log" 2>&1; then
+        rm -f "$deps_log"
+    else
+        deps_status=$?
+        printf 'ERROR: Failed to install dependencies (exit %s). pacman output:\n' "$deps_status" >&2
+        sed 's/^/  /' "$deps_log" >&2
+        rm -f "$deps_log"
+        exit "$deps_status"
+    fi
 fi
 
 ####################################################################################################
