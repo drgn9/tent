@@ -180,13 +180,49 @@ fi
 ####################################################################################################
 
 cleanup() {
-    show_error "Installation failed at line $1"
+    local line=$1
+    local command=$2
+    local status=$3
+
+    show_error "Installation failed at line $line (exit $status): $command"
     rm -f /mnt/etc/sudoers.d/wheel 2>/dev/null || true
     umount -R /mnt 2>/dev/null || true
     cryptsetup close to_be_wiped 2>/dev/null || true
     cryptsetup close cryptroot 2>/dev/null || true
+    exit "$status"
 }
-trap 'cleanup $LINENO' ERR
+trap 'cleanup "$LINENO" "$BASH_COMMAND" "$?"' ERR
+
+sync_host_clock() {
+    if timedatectl set-ntp true &>/dev/null; then
+        show_info "NTP synchronization enabled"
+    else
+        show_warn "Could not enable NTP with timedatectl; continuing. If pacman reports signature errors, fix the clock and retry."
+    fi
+}
+
+update_arch_keyring() {
+    local log_file
+    local status
+
+    log_file=$(mktemp)
+    if gum spin --spinner dot --title "Updating archlinux-keyring..." -- \
+        bash -c 'pacman -Sy --needed --noconfirm archlinux-keyring >"$1" 2>&1' bash "$log_file"; then
+        rm -f "$log_file"
+        return 0
+    else
+        status=$?
+    fi
+
+    show_error "Failed to update archlinux-keyring. pacman output:"
+    if [[ -s "$log_file" ]]; then
+        sed 's/^/  /' "$log_file" >&2
+    else
+        printf '  No pacman output was captured.\n' >&2
+    fi
+    rm -f "$log_file"
+    return "$status"
+}
 
 ####################################################################################################
 # Installer functions (settings)
@@ -387,9 +423,10 @@ show_header
 # Keyring and clock
 ####################################################################################################
 
-gum spin --spinner dot --title "Updating keyring and synchronizing clock..." -- \
-    bash -c 'timedatectl set-ntp true && pacman -Syu --noconfirm archlinux-keyring >/dev/null'
-show_info "Keyring updated and clock synchronized"
+show_info "Synchronizing host clock"
+sync_host_clock
+update_arch_keyring
+show_info "Keyring updated"
 
 kblayout="us"
 show_info "Setting console layout to $kblayout"
