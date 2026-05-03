@@ -362,10 +362,12 @@ desktop_base_installer() {
 desktop_niri_installer() {
     show_info "Installing Niri packages"
     install_packages "${SCRIPT_DIR}"/packages/desktop-niri.conf
+}
 
-    mkdir -p /mnt/home/"$username"/.config/systemd/user/niri.service.wants
-    ln -sf /usr/lib/systemd/user/waybar.service /mnt/home/"$username"/.config/systemd/user/niri.service.wants/waybar.service
-    chown -R "$username":"$username" /mnt/home/"$username"/.config
+desktop_niri_user_setup() {
+    show_info "Configuring Niri user services"
+    arch-chroot /mnt runuser -u "$username" -- mkdir -p "/home/$username/.config/systemd/user/niri.service.wants"
+    arch-chroot /mnt runuser -u "$username" -- ln -sf /usr/lib/systemd/user/waybar.service "/home/$username/.config/systemd/user/niri.service.wants/waybar.service"
 }
 
 desktop_gnome_installer() {
@@ -408,7 +410,6 @@ else
 fi
 
 # --- Unlock method ---
-fido2_backup="no"
 if [ "$encrypt_root" = "yes" ]; then
     unlock_choices=("FIDO2 + PIN" "Passphrase only")
     if [[ -c /dev/tpmrm0 ]]; then
@@ -425,12 +426,6 @@ if [ "$encrypt_root" = "yes" ]; then
         "FIDO2 + PIN")
             unlock_method="fido2"
             show_info "Unlock method: FIDO2 + PIN"
-            if gum confirm "Enroll a backup FIDO2 key?"; then
-                fido2_backup="yes"
-                show_info "Backup FIDO2 key: enabled"
-            else
-                show_info "Backup FIDO2 key: disabled"
-            fi
             ;;
         "Passphrase only")
             unlock_method="passphrase"
@@ -630,13 +625,7 @@ encrypt_label="no"
 unlock_label="none"
 case "$unlock_method" in
     tpm2)       unlock_label="TPM2 + PIN (with recovery key)" ;;
-    fido2)
-        if [ "$fido2_backup" = "yes" ]; then
-            unlock_label="FIDO2 + PIN (primary + backup key, with recovery key)"
-        else
-            unlock_label="FIDO2 + PIN (with recovery key)"
-        fi
-        ;;
+    fido2)      unlock_label="FIDO2 + PIN (with password fallback)" ;;
     passphrase) unlock_label="passphrase" ;;
 esac
 
@@ -1204,12 +1193,13 @@ EOF
 show_info "Enabling systemd-timesyncd"
 systemctl enable systemd-timesyncd --root=/mnt &>/dev/null
 
-show_info "Enabling polkit"
-systemctl enable polkit.service --root=/mnt &>/dev/null
-
 show_info "Deploying polkit rules"
 mkdir -p /mnt/etc/polkit-1/rules.d
 cp "${SCRIPT_DIR}"/settings/polkit/00-udisks-wheel.rules /mnt/etc/polkit-1/rules.d/00-udisks-wheel.rules
+arch-chroot /mnt chown root:polkitd /etc/polkit-1/rules.d
+arch-chroot /mnt chmod 0750 /etc/polkit-1/rules.d
+arch-chroot /mnt chown root:polkitd /etc/polkit-1/rules.d/00-udisks-wheel.rules
+arch-chroot /mnt chmod 0640 /etc/polkit-1/rules.d/00-udisks-wheel.rules
 
 ####################################################################################################
 # Add user
@@ -1223,6 +1213,10 @@ arch-chroot /mnt useradd -m -G users,wheel -s /bin/bash "$username"
 show_info "Setting user password for $username"
 echo "$username:$userpass" | arch-chroot /mnt chpasswd
 unset userpass userpass2
+
+if [ "$desktop_choice" = "niri" ]; then
+    desktop_niri_user_setup
+fi
 
 ####################################################################################################
 # Install paru
@@ -1276,32 +1270,12 @@ if [ "$unlock_method" = "tpm2" ]; then
     show_info "Removing original password keyslot"
     systemd-cryptenroll "$ROOT" --wipe-slot=password
 elif [ "$unlock_method" = "fido2" ]; then
-    recovery_key_output=""
     gum style --foreground 212 --bold --margin "1 0" "FIDO2 Enrollment"
     gum style --foreground 214 --margin "0 2" \
-        "Insert your primary FIDO2 key and press Enter to continue."
-    gum confirm "Primary FIDO2 key is inserted?" || { show_error "FIDO2 enrollment cancelled"; exit 1; }
-    show_info "Enrolling primary FIDO2 key with PIN"
+        "Insert your FIDO2 key and press Enter to continue."
+    gum confirm "FIDO2 key is inserted?" || { show_error "FIDO2 enrollment cancelled"; exit 1; }
+    show_info "Enrolling FIDO2 key with PIN"
     systemd-cryptenroll "$ROOT" --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa
-
-    if [ "$fido2_backup" = "yes" ]; then
-        gum style --foreground 214 --margin "1 2" \
-            "Remove the primary FIDO2 key." \
-            "Insert your backup FIDO2 key and press Enter to continue."
-        gum confirm "Backup FIDO2 key is inserted?" || { show_error "Backup FIDO2 key enrollment cancelled"; exit 1; }
-        show_info "Enrolling backup FIDO2 key with PIN"
-        systemd-cryptenroll "$ROOT" --fido2-device=auto --fido2-with-client-pin=yes --fido2-credential-algorithm=eddsa
-    fi
-
-    show_info "Enrolling recovery key"
-    recovery_key_output=$(systemd-cryptenroll "$ROOT" --recovery-key)
-    printf '%s\n' "$recovery_key_output"
-    show_warn "Save the recovery key shown above now, including the QR code if you want to scan it."
-    read -rp "Press Enter after you have saved the recovery key..."
-    save_encrypted_recovery_key "$recovery_key_output"
-    unset recovery_key_output
-    show_info "Removing original password keyslot"
-    systemd-cryptenroll "$ROOT" --wipe-slot=password
 fi
 
 ####################################################################################################
@@ -1349,14 +1323,8 @@ if [ "$encrypt_root" = "yes" ]; then
             show_info "Use systemd-cryptenroll to manage enrollment slots."
             ;;
         fido2)
-            if [ "$fido2_backup" = "yes" ]; then
-                show_info "Root partition is encrypted (LUKS) with two FIDO2 keys + PIN. A recovery key has also been enrolled."
-            else
-                show_info "Root partition is encrypted (LUKS) with FIDO2 + PIN. A recovery key has also been enrolled."
-            fi
-            show_info "If no FIDO2 key is present at boot, the system will wait 30 seconds then fall back to a passphrase prompt (use the recovery key)."
-            show_info "Encrypted recovery key saved to ~/.luks-recovery-key.age"
-            show_info "Decrypt it with: age -d ~/.luks-recovery-key.age"
+            show_info "Root partition is encrypted (LUKS) with FIDO2 + PIN. The original password keyslot remains enrolled."
+            show_info "If no FIDO2 key is present at boot, the system will wait 30 seconds then fall back to a passphrase prompt."
             show_info "Use systemd-cryptenroll to manage enrollment slots."
             ;;
         passphrase)
