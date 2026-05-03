@@ -429,12 +429,6 @@ desktop_niri_installer() {
     install_packages "${SCRIPT_DIR}"/packages/desktop-niri.conf
 }
 
-desktop_niri_user_setup() {
-    show_info "Configuring Niri user services"
-    arch-chroot /mnt runuser -u "$username" -- mkdir -p "/home/$username/.config/systemd/user/niri.service.wants"
-    arch-chroot /mnt runuser -u "$username" -- ln -sf /usr/lib/systemd/user/waybar.service "/home/$username/.config/systemd/user/niri.service.wants/waybar.service"
-}
-
 desktop_gnome_installer() {
     show_info "Installing GNOME packages"
     install_packages "${SCRIPT_DIR}"/packages/desktop-gnome.conf
@@ -1293,10 +1287,6 @@ arch-chroot /mnt useradd -m -G users,wheel -s /bin/bash "$username"
 show_info "Setting user password for $username"
 echo "$username:$userpass" | arch-chroot /mnt chpasswd
 unset userpass userpass2
-
-if [ "$desktop_choice" = "niri" ]; then
-    desktop_niri_user_setup
-fi
 
 ####################################################################################################
 # Install paru
