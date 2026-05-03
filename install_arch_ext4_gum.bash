@@ -762,17 +762,31 @@ done
 gum style --foreground 212 --bold --margin "1 0" "Partition Disks"
 
 while true; do
-    devices=$(lsblk --nodeps --paths --list --noheadings --sort=size --output=name,size,model | grep --invert-match "loop")
+    devices=$(lsblk --nodeps --paths --list --noheadings --sort=size --output=name,size,type,model | awk '$3 != "loop"')
 
     if [[ -z "$devices" ]]; then
         show_warn "No devices found"
         break
     fi
 
-    device=$(echo -e "Skip\n$devices" | gum choose --header "Select device to partition (or Skip):")
+    device=$(printf 'Skip\n%s\n' "$devices" | gum choose --header "Select device to partition (or Skip):")
 
     if [[ "$device" = "Skip" ]]; then
-        break
+        partprobe || true
+        udevadm settle || true
+        partitions=$(lsblk --paths --list --noheadings --output=name,size,type,fstype,mountpoints,model | awk '$3 == "part"')
+
+        if [[ -n "$partitions" ]]; then
+            break
+        fi
+
+        show_warn "No partitions found. Create partitions before continuing."
+        if gum confirm "Open partition menu now?"; then
+            continue
+        fi
+
+        show_info "Installation cancelled"
+        exit 0
     fi
 
     device_path=$(echo "$device" | awk '{print $1}')
@@ -790,11 +804,11 @@ done
 # Build partition list for selection
 partprobe || true
 udevadm settle || true
-partitions=$(lsblk --paths --list --noheadings --output=name,size,model,type,fstype,mountpoints | awk '$4 == "part"')
+partitions=$(lsblk --paths --list --noheadings --output=name,size,type,fstype,mountpoints,model | awk '$3 == "part"')
 
 if [[ -z "$partitions" ]]; then
-    show_error "No partitions found. Please partition a disk first."
-    exit 1
+    show_info "Installation cancelled"
+    exit 0
 fi
 
 # --- EFI partition ---
