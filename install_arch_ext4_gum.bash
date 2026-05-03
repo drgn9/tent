@@ -1403,31 +1403,6 @@ if [ "$encrypt_root" = "yes" ]; then
     esac
 fi
 
-show_info "USBGuard is installed but NOT enabled."
-show_info "After first boot, plug in all trusted USB devices, then run:"
-show_info "  sudo usbguard generate-policy > /etc/usbguard/rules.conf"
-show_info "  sudo systemctl enable --now usbguard"
-show_info "Add your username to IPCAllowedUsers in /etc/usbguard/usbguard-daemon.conf for non-root CLI access."
-
-echo ""
-show_info "Post-install steps (run after first boot):"
-show_info "  sudo tailscale set --operator=\$USER"
-show_info "  systemctl --user enable --now ssh-agent.socket"
-
-if [ "$use_apparmor" = "yes" ]; then
-    show_info "  paru -S apparmor.d"
-    show_info "  sudo systemctl reload apparmor.service"
-    show_info "  reboot"
-    show_info "  sudo aa-status"
-    show_info "  sudo aa-log"
-fi
-
-if [ "$desktop_choice" = "niri" ]; then
-    show_info "  dconf write /org/gnome/desktop/interface/color-scheme \"'prefer-dark'\""
-    show_info "  Run 'nwg-look' and set the global GTK and icon theme and set prefer-dark"
-    show_info "  Open 'kvantummanager' to select and apply the Qt theme"
-fi
-
 if [ "$secure_boot" = "yes" ]; then
     gum style \
         --foreground 82 --border-foreground 82 --border double \
