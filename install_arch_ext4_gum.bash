@@ -75,7 +75,26 @@ show_warn() {
 }
 
 install_packages() {
-    arch-chroot /mnt pacman -S --needed --noconfirm - < "$1" >/dev/null
+    local package_file=$1
+    local log_file
+    local status
+
+    log_file=$(mktemp)
+    if arch-chroot /mnt pacman -S --needed --noconfirm - < "$package_file" >"$log_file" 2>&1; then
+        rm -f "$log_file"
+        return 0
+    else
+        status=$?
+    fi
+
+    show_error "Failed to install packages from $package_file. pacman output:"
+    if [[ -s "$log_file" ]]; then
+        sed 's/^/  /' "$log_file" >&2
+    else
+        printf '  No pacman output was captured.\n' >&2
+    fi
+    rm -f "$log_file"
+    return "$status"
 }
 
 save_encrypted_recovery_key() {
