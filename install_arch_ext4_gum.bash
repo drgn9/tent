@@ -160,6 +160,7 @@ validate_partition_target() {
 required_paths=(
     "${SCRIPT_DIR}"/settings/apparmor/parser.conf.append
     "${SCRIPT_DIR}"/settings/apparmor/xdg-user-dirs.local
+    "${SCRIPT_DIR}"/settings/niri/config.kdl
     "${SCRIPT_DIR}"/settings/network/NetworkManager.conf
     "${SCRIPT_DIR}"/settings/network/20-wired.network
     "${SCRIPT_DIR}"/settings/network/wait-for-only-one-interface.conf
@@ -214,7 +215,7 @@ cleanup() {
     local status=$3
 
     show_error "Installation failed at line $line (exit $status): $command"
-    rm -f /mnt/etc/sudoers.d/wheel 2>/dev/null || true
+    rm -f /mnt/etc/sudoers.d/99-installer-paru-nopasswd 2>/dev/null || true
     umount -R /mnt 2>/dev/null || true
     cryptsetup close to_be_wiped 2>/dev/null || true
     cryptsetup close cryptroot 2>/dev/null || true
@@ -761,7 +762,9 @@ while true; do
     show_info "Wiping $device_path"
     wipefs --all "$device_path"
     cryptsetup open --type plain -c aes-xts-plain64 -d /dev/urandom "$device_path" to_be_wiped
-    dd if=/dev/zero of=/dev/mapper/to_be_wiped bs=1M status=progress
+    wipe_target=/dev/mapper/to_be_wiped
+    wipe_size=$(blockdev --getsize64 "$wipe_target")
+    dd if=/dev/zero of="$wipe_target" bs=16M count="$wipe_size" iflag=count_bytes status=progress conv=fsync
     cryptsetup close /dev/mapper/to_be_wiped
     partprobe "$device_path" || true
     udevadm settle || true
@@ -1280,13 +1283,20 @@ arch-chroot /mnt chmod 0640 /etc/polkit-1/rules.d/00-udisks-wheel.rules
 ####################################################################################################
 
 show_info "Creating user $username"
-echo "%wheel ALL=(ALL) NOPASSWD: ALL" > /mnt/etc/sudoers.d/wheel
-arch-chroot /mnt chmod 0440 /etc/sudoers.d/wheel
+echo "%wheel ALL=(ALL) NOPASSWD: ALL" > /mnt/etc/sudoers.d/99-installer-paru-nopasswd
+arch-chroot /mnt chmod 0440 /etc/sudoers.d/99-installer-paru-nopasswd
 show_info "Adding $username to the system with root privilege"
 arch-chroot /mnt useradd -m -G users,wheel -s /bin/bash "$username"
 show_info "Setting user password for $username"
 echo "$username:$userpass" | arch-chroot /mnt chpasswd
 unset userpass userpass2
+
+if [ "$desktop_choice" = "niri" ]; then
+    show_info "Installing Niri user config"
+    install -d -m 700 "/mnt/home/$username/.config/niri"
+    install -m 600 "${SCRIPT_DIR}"/settings/niri/config.kdl "/mnt/home/$username/.config/niri/config.kdl"
+    arch-chroot /mnt chown -R "$username:$username" "/home/$username/.config/niri"
+fi
 
 ####################################################################################################
 # Install paru
@@ -1304,7 +1314,7 @@ arch-chroot /mnt runuser -u "$username" -- bash -c '
 '
 
 # Remove NOPASSWD privileges
-rm /mnt/etc/sudoers.d/wheel
+rm -f /mnt/etc/sudoers.d/99-installer-paru-nopasswd
 echo "%wheel ALL=(ALL:ALL) ALL" > /mnt/etc/sudoers.d/wheel
 arch-chroot /mnt chmod 0440 /etc/sudoers.d/wheel
 
